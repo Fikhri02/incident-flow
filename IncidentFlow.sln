@@ -35,6 +35,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentFlow.Services.Timel
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentFlow.Services.Correlation.Worker", "src\Services\IncidentFlow.Services.Correlation.Worker\IncidentFlow.Services.Correlation.Worker.csproj", "{E37AE0A2-794E-4531-8C6F-F1D4E3C32C16}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentFlow.IntegrationTests", "tests\IncidentFlow.IntegrationTests\IncidentFlow.IntegrationTests.csproj", "{11108F12-D45D-4CBF-9608-816FBBD8F905}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -96,6 +98,10 @@ Global
 		{E37AE0A2-794E-4531-8C6F-F1D4E3C32C16}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E37AE0A2-794E-4531-8C6F-F1D4E3C32C16}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E37AE0A2-794E-4531-8C6F-F1D4E3C32C16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{11108F12-D45D-4CBF-9608-816FBBD8F905}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11108F12-D45D-4CBF-9608-816FBBD8F905}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{11108F12-D45D-4CBF-9608-816FBBD8F905}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{11108F12-D45D-4CBF-9608-816FBBD8F905}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{716430E4-C739-4E0A-B1B4-DA23EC472385} = {12C95892-DA36-4F5D-95E4-515E7DE9AAF9}
@@ -112,5 +118,6 @@ Global
 		{9A3154C2-F82A-491E-B5E5-CA2CCA22BA0C} = {85CEE842-9C82-4FDF-A739-3D0CB6083EA5}
 		{887305C0-4EC4-4650-9FD6-DA9F2A01614B} = {85CEE842-9C82-4FDF-A739-3D0CB6083EA5}
 		{E37AE0A2-794E-4531-8C6F-F1D4E3C32C16} = {85CEE842-9C82-4FDF-A739-3D0CB6083EA5}
+		{11108F12-D45D-4CBF-9608-816FBBD8F905} = {37343B64-43F3-4577-95B0-265821E8B5FE}
 	EndGlobalSection
 EndGlobal
