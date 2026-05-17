@@ -18,6 +18,7 @@ builder.Services.AddMassTransit(x =>
     x.AddConsumer<IncidentClosedConsumer>();
     x.AddConsumer<AnomalyDetectedConsumer>();
     x.AddConsumer<ErrorSignalConsumer>();
+    x.AddConsumer<CorrelationFoundConsumer>();
 
     x.UsingRabbitMq((ctx, cfg) =>
     {

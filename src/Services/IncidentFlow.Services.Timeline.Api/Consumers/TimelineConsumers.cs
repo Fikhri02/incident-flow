@@ -69,6 +69,17 @@ public sealed class ErrorSignalConsumer(TimelineDbContext db) : IConsumer<ErrorS
     }
 }
 
+public sealed class CorrelationFoundConsumer(TimelineDbContext db) : IConsumer<CorrelationFound>
+{
+    public Task Consume(ConsumeContext<CorrelationFound> context)
+    {
+        var msg = context.Message;
+        return TimelineAppend.Append(db, null, "correlation.found", "platform", msg.Environment,
+            $"Correlation [{msg.CorrelationType}] — {msg.IncidentIds.Count} incidents grouped (key: {msg.CorrelationKey})",
+            msg.CorrelationId, null, msg.DetectedAt, context.CancellationToken);
+    }
+}
+
 file static class TimelineAppend
 {
     internal static async Task Append(

@@ -6,6 +6,7 @@ using MassTransit;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
+builder.AddRedisClient("redis");
 
 builder.Services.AddSingleton<SpikeDetector>();
 

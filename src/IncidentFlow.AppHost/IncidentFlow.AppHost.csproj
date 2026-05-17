@@ -21,6 +21,7 @@
     <ProjectReference Include="..\Services\IncidentFlow.Services.Ingestion.Api\IncidentFlow.Services.Ingestion.Api.csproj" />
     <ProjectReference Include="..\Services\IncidentFlow.Services.Detection.Worker\IncidentFlow.Services.Detection.Worker.csproj" />
     <ProjectReference Include="..\Services\IncidentFlow.Services.Incident.Api\IncidentFlow.Services.Incident.Api.csproj" />
+    <ProjectReference Include="..\Services\IncidentFlow.Services.Correlation.Worker\IncidentFlow.Services.Correlation.Worker.csproj" />
     <ProjectReference Include="..\Services\IncidentFlow.Services.Notification.Worker\IncidentFlow.Services.Notification.Worker.csproj" />
     <ProjectReference Include="..\Services\IncidentFlow.Services.Timeline.Api\IncidentFlow.Services.Timeline.Api.csproj" />
   </ItemGroup>

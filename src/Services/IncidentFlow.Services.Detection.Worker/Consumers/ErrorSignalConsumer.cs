@@ -11,7 +11,8 @@ public sealed class ErrorSignalConsumer(SpikeDetector detector, IPublishEndpoint
     {
         var msg = context.Message;
 
-        var result = detector.Record(msg.ServiceName, msg.Environment, msg.Fingerprint, msg.OccurredAt);
+        var result = await detector.RecordAsync(
+            msg.ServiceName, msg.Environment, msg.Fingerprint, msg.OccurredAt, msg.SignalId);
 
         if (!result.IsSpike)
             return;

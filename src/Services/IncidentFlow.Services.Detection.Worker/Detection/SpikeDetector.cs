@@ -1,41 +1,32 @@
+using StackExchange.Redis;
+
 namespace IncidentFlow.Services.Detection.Worker.Detection;
 
-public sealed class SpikeDetector
+public sealed class SpikeDetector(IConnectionMultiplexer redis)
 {
-    // keyed by "serviceName|environment|fingerprint"
-    private readonly Dictionary<string, Queue<DateTimeOffset>> _windows = new();
-    private readonly object _lock = new();
-
     private const int Threshold = 5;
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(5);
 
-    public SpikeResult Record(string serviceName, string environment, string fingerprint, DateTimeOffset occurredAt)
+    public async Task<SpikeResult> RecordAsync(
+        string serviceName, string environment, string fingerprint,
+        DateTimeOffset occurredAt, Guid signalId)
     {
-        var key = $"{serviceName}|{environment}|{fingerprint}";
+        var db = redis.GetDatabase();
+        var key = $"spike:{serviceName}:{environment}:{fingerprint}";
+        var scoreNow = (double)occurredAt.ToUnixTimeMilliseconds();
+        var scoreCutoff = (double)occurredAt.Subtract(Window).ToUnixTimeMilliseconds();
 
-        lock (_lock)
+        await db.SortedSetAddAsync(key, signalId.ToString(), scoreNow);
+        await db.SortedSetRemoveRangeByScoreAsync(key, 0, scoreCutoff - 1);
+        var count = await db.SortedSetLengthAsync(key);
+
+        if (count >= Threshold)
         {
-            if (!_windows.TryGetValue(key, out var queue))
-            {
-                queue = new Queue<DateTimeOffset>();
-                _windows[key] = queue;
-            }
-
-            var cutoff = occurredAt - Window;
-            while (queue.Count > 0 && queue.Peek() < cutoff)
-                queue.Dequeue();
-
-            queue.Enqueue(occurredAt);
-
-            if (queue.Count >= Threshold)
-            {
-                var signalCount = queue.Count;
-                queue.Clear();
-                return new SpikeResult(true, signalCount);
-            }
-
-            return new SpikeResult(false, queue.Count);
+            await db.KeyDeleteAsync(key);
+            return new SpikeResult(true, (int)count);
         }
+
+        return new SpikeResult(false, (int)count);
     }
 }
 

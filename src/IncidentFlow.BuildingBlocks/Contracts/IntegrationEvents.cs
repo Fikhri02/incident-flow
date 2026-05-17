@@ -121,6 +121,19 @@ public sealed record IncidentClosed(
     string CorrelationId
 );
 
+// Correlation events — published by Correlation.Worker
+public sealed record CorrelationFound(
+    Guid CorrelationGroupId,
+    string CorrelationType,     // "deployment" | "fingerprint"
+    string CorrelationKey,
+    string Environment,
+    string? DeploymentId,
+    string? Fingerprint,
+    IReadOnlyList<Guid> IncidentIds,
+    DateTimeOffset DetectedAt,
+    string CorrelationId
+);
+
 // Anomaly events — published by Detection
 public sealed record AnomalyDetected(
     Guid AnomalyId,

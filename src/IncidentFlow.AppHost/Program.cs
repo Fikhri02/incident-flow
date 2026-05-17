@@ -22,7 +22,12 @@ var incident = builder.AddProject<Projects.IncidentFlow_Services_Incident_Api>("
     .WithReference(rabbit);
 
 builder.AddProject<Projects.IncidentFlow_Services_Detection_Worker>("detection")
-    .WithReference(rabbit);
+    .WithReference(rabbit)
+    .WithReference(redis);
+
+builder.AddProject<Projects.IncidentFlow_Services_Correlation_Worker>("correlation")
+    .WithReference(rabbit)
+    .WithReference(redis);
 
 var timeline = builder.AddProject<Projects.IncidentFlow_Services_Timeline_Api>("timeline")
     .WithReference(timelineDb)
