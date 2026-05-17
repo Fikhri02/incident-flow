@@ -1,369 +1,197 @@
-using System.Net;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using IncidentFlow.Core;
+using IncidentFlow.ServiceDefaults;
+using Microsoft.AspNetCore.Diagnostics;
 
 const string CorrelationIdHeader = "x-correlation-id";
 const string ApiKeyHeader = "x-api-key";
-var jsonOptions = new JsonSerializerOptions
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.AddServiceDefaults();
+builder.Services.AddSingleton<IncidentFlowEngine>();
+builder.Services.ConfigureHttpJsonOptions(o =>
 {
-    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    PropertyNameCaseInsensitive = true,
-    WriteIndented = true,
-    Converters = { new JsonStringEnumConverter() }
-};
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    o.SerializerOptions.WriteIndented = true;
+});
 
-var engine = new IncidentFlowEngine();
-var listener = new HttpListener();
-var prefix = Environment.GetEnvironmentVariable("INCIDENTFLOW_URL") ?? "http://localhost:5089/";
-listener.Prefixes.Add(prefix);
-listener.Start();
+var app = builder.Build();
 
-Console.WriteLine($"IncidentFlow API listening on {prefix}");
-Console.WriteLine("Press Ctrl+C to stop.");
-
-var stopping = new CancellationTokenSource();
-Console.CancelKeyPress += (_, eventArgs) =>
+app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
 {
-    eventArgs.Cancel = true;
-    stopping.Cancel();
-    listener.Stop();
-};
+    var ex = ctx.Features.Get<IExceptionHandlerFeature>()?.Error;
+    var (status, message) = ex switch
+    {
+        ArgumentException => (400, ex.Message),
+        InvalidOperationException when ex.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) => (429, ex.Message),
+        InvalidOperationException => (409, ex.Message),
+        KeyNotFoundException => (404, ex.Message),
+        _ => (500, ex?.Message ?? "An unexpected error occurred.")
+    };
+    ctx.Response.StatusCode = status;
+    await ctx.Response.WriteAsJsonAsync(new { error = message });
+}));
 
-while (!stopping.IsCancellationRequested)
+// Correlation ID
+app.Use(async (ctx, next) =>
 {
-    try
-    {
-        var context = await listener.GetContextAsync();
-        _ = Task.Run(() => Handle(context, engine), stopping.Token);
-    }
-    catch (HttpListenerException) when (stopping.IsCancellationRequested)
-    {
-        break;
-    }
-    catch (ObjectDisposedException) when (stopping.IsCancellationRequested)
-    {
-        break;
-    }
-}
+    var id = ctx.Request.Headers[CorrelationIdHeader].FirstOrDefault() ?? Guid.NewGuid().ToString("N");
+    ctx.Items[CorrelationIdHeader] = id;
+    ctx.Response.Headers[CorrelationIdHeader] = id;
+    await next();
+});
 
-async Task Handle(HttpListenerContext context, IncidentFlowEngine engine)
+// API key guard
+app.Use(async (ctx, next) =>
 {
-    var request = context.Request;
-    var response = context.Response;
-    var correlationId = request.Headers[CorrelationIdHeader] ?? Guid.NewGuid().ToString("N");
-    response.Headers[CorrelationIdHeader] = correlationId;
+    var configuredKey = Environment.GetEnvironmentVariable("INCIDENTFLOW_API_KEY");
+    var path = ctx.Request.Path.Value ?? "/";
+    var exempt = string.IsNullOrWhiteSpace(configuredKey)
+                 || path == "/"
+                 || path.StartsWith("/health/", StringComparison.OrdinalIgnoreCase);
+    if (!exempt && ctx.Request.Headers[ApiKeyHeader] != configuredKey)
+    {
+        ctx.Response.StatusCode = 401;
+        await ctx.Response.WriteAsJsonAsync(new { error = "API key is required." });
+        return;
+    }
+    await next();
+});
 
-    try
-    {
-        var path = request.Url?.AbsolutePath.TrimEnd('/') ?? string.Empty;
-        if (path.Length == 0)
-        {
-            path = "/";
-        }
+app.MapDefaultEndpoints();
 
-        if (!IsAuthorized(request, path))
-        {
-            await WriteJson(response, 401, new { error = "API key is required." });
-            return;
-        }
+static string CorrelationId(HttpContext ctx) =>
+    ctx.Items[CorrelationIdHeader] as string ?? Guid.NewGuid().ToString("N");
 
-        var result = await Route(request, path, correlationId, engine);
-        await WriteJson(response, result.StatusCode, result.Body);
-    }
-    catch (ArgumentException ex)
-    {
-        await WriteJson(response, 400, new { error = ex.Message });
-    }
-    catch (InvalidOperationException ex)
-    {
-        var statusCode = ex.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ? 429 : 409;
-        await WriteJson(response, statusCode, new { error = ex.Message });
-    }
-    catch (KeyNotFoundException ex)
-    {
-        await WriteJson(response, 404, new { error = ex.Message });
-    }
-    catch (Exception ex)
-    {
-        await WriteJson(response, 500, new { error = ex.Message });
-    }
-}
+static ReportFilter ReportFilter(HttpContext ctx) => new(
+    ctx.Request.Query["serviceName"].FirstOrDefault(),
+    ctx.Request.Query["environment"].FirstOrDefault()
+);
 
-async Task<RouteResult> Route(HttpListenerRequest request, string path, string correlationId, IncidentFlowEngine engine)
+// Root
+app.MapGet("/", () => new
 {
-    var method = request.HttpMethod.ToUpperInvariant();
-    if (method == "GET" && path == "/")
-    {
-        return Ok(new
-        {
-            service = "IncidentFlow",
-            status = "running",
-            workflow = "signals -> detection -> correlation -> incident -> notification -> timeline -> recommendation -> resolution -> postmortem -> reporting"
-        });
-    }
+    service = "IncidentFlow",
+    status = "running",
+    workflow = "signals -> detection -> correlation -> incident -> notification -> timeline -> recommendation -> resolution -> postmortem -> reporting"
+});
 
-    if (method == "GET" && (path == "/health/live" || path == "/health/ready"))
-    {
-        return Ok(new
-        {
-            status = path.EndsWith("live", StringComparison.OrdinalIgnoreCase) ? "live" : "ready",
-            readiness = engine.GetRuntimeReadiness()
-        });
-    }
+// Signals
+app.MapPost("/api/v1/signals/errors", (ErrorSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Json(e.IngestError(req, CorrelationId(ctx)), statusCode: 202));
 
-    if (method == "POST" && path == "/api/v1/signals/errors")
-    {
-        return Accepted(engine.IngestError(await ReadJson<ErrorSignalRequest>(request), correlationId));
-    }
+app.MapPost("/api/v1/signals/logs", (LogSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Json(e.IngestLog(req, CorrelationId(ctx)), statusCode: 202));
 
-    if (method == "POST" && path == "/api/v1/signals/logs")
-    {
-        return Accepted(engine.IngestLog(await ReadJson<LogSignalRequest>(request), correlationId));
-    }
+app.MapPost("/api/v1/signals/metrics", (MetricSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Json(e.IngestMetric(req, CorrelationId(ctx)), statusCode: 202));
 
-    if (method == "POST" && path == "/api/v1/signals/metrics")
-    {
-        return Accepted(engine.IngestMetric(await ReadJson<MetricSignalRequest>(request), correlationId));
-    }
+app.MapPost("/api/v1/signals/traces", (TraceSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Json(e.IngestTrace(req, CorrelationId(ctx)), statusCode: 202));
 
-    if (method == "POST" && path == "/api/v1/signals/traces")
-    {
-        return Accepted(engine.IngestTrace(await ReadJson<TraceSignalRequest>(request), correlationId));
-    }
+app.MapPost("/api/v1/signals/health-checks", (HealthCheckSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Json(e.IngestHealthCheck(req, CorrelationId(ctx)), statusCode: 202));
 
-    if (method == "POST" && path == "/api/v1/signals/health-checks")
-    {
-        return Accepted(engine.IngestHealthCheck(await ReadJson<HealthCheckSignalRequest>(request), correlationId));
-    }
+app.MapPost("/api/v1/signals/deployments", (DeploymentSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Json(e.IngestDeployment(req, CorrelationId(ctx)), statusCode: 202));
 
-    if (method == "POST" && path == "/api/v1/signals/deployments")
-    {
-        return Accepted(engine.IngestDeployment(await ReadJson<DeploymentSignalRequest>(request), correlationId));
-    }
+app.MapPost("/api/v1/signals/user-reports", (UserReportSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Json(e.IngestUserReport(req, CorrelationId(ctx)), statusCode: 202));
 
-    if (method == "POST" && path == "/api/v1/signals/user-reports")
-    {
-        return Accepted(engine.IngestUserReport(await ReadJson<UserReportSignalRequest>(request), correlationId));
-    }
+app.MapGet("/api/v1/signals", (IncidentFlowEngine e) => e.GetSignals());
 
-    if (method == "GET" && path == "/api/v1/incidents")
-    {
-        return Ok(engine.GetIncidents());
-    }
+// Incidents
+app.MapGet("/api/v1/incidents", (IncidentFlowEngine e) => e.GetIncidents());
+app.MapGet("/api/v1/incidents/open", (IncidentFlowEngine e) => e.GetOpenIncidents());
 
-    if (method == "GET" && path == "/api/v1/incidents/open")
-    {
-        return Ok(engine.GetOpenIncidents());
-    }
-
-    if (method == "GET" && path == "/api/v1/events")
-    {
-        return Ok(engine.GetEvents());
-    }
-
-    if (method == "GET" && path == "/api/v1/events/outbox")
-    {
-        return Ok(engine.GetOutboxMessages());
-    }
-
-    if (method == "GET" && path == "/api/v1/events/inbox")
-    {
-        return Ok(engine.GetInboxMessages());
-    }
-
-    if (method == "GET" && path == "/api/v1/signals")
-    {
-        return Ok(engine.GetSignals());
-    }
-
-    if (method == "GET" && path == "/api/v1/runtime/readiness")
-    {
-        return Ok(engine.GetRuntimeReadiness());
-    }
-
-    if (method == "GET" && path == "/api/v1/reports/summary")
-    {
-        return Ok(engine.GetReport(ReportFilterFrom(request)));
-    }
-
-    if (method == "POST" && path == "/api/v1/reports/rebuild")
-    {
-        return Ok(engine.RebuildReport(ReportFilterFrom(request), correlationId));
-    }
-
-    if (method == "GET" && path == "/api/v1/reports/service-reliability")
-    {
-        return Ok(engine.GetReport(ReportFilterFrom(request)).TopFailingServices);
-    }
-
-    if (method == "GET" && path == "/api/v1/reports/mtta")
-    {
-        return Ok(new { minutes = engine.GetReport(ReportFilterFrom(request)).MeanTimeToAcknowledgeMinutes });
-    }
-
-    if (method == "GET" && path == "/api/v1/reports/mttr")
-    {
-        return Ok(new { minutes = engine.GetReport(ReportFilterFrom(request)).MeanTimeToResolveMinutes });
-    }
-
-    if (method == "GET" && path == "/api/v1/reports/severity-breakdown")
-    {
-        return Ok(engine.GetReport(ReportFilterFrom(request)).SeverityBreakdown);
-    }
-
-    if (method == "GET" && path == "/api/v1/reports/top-failing-services")
-    {
-        return Ok(engine.GetReport(ReportFilterFrom(request)).TopFailingServices);
-    }
-
-    if (method == "GET" && path == "/api/v1/reports/deployment-regressions")
-    {
-        return Ok(engine.GetReport(ReportFilterFrom(request)).DeploymentRegressionStats);
-    }
-
-    if (method == "POST" && path == "/api/v1/incidents/escalation-sweep")
-    {
-        return Ok(engine.RunEscalationSweep(await ReadJsonOrDefault(request, new EscalationSweepRequest()), correlationId));
-    }
-
-    if (method == "POST" && path == "/api/v1/notifications/retry-failed")
-    {
-        return Ok(engine.RetryFailedNotifications(correlationId));
-    }
-
-    var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-    if (segments.Length >= 4 && segments[0] == "api" && segments[1] == "v1" && segments[2] == "incidents" && Guid.TryParse(segments[3], out var incidentId))
-    {
-        if (segments.Length == 4 && method == "GET")
-        {
-            var incident = engine.GetIncident(incidentId);
-            return incident is null ? NotFound() : Ok(incident);
-        }
-
-        if (segments.Length == 5 && method == "GET" && segments[4] == "timeline")
-        {
-            return Ok(engine.GetTimeline(incidentId));
-        }
-
-        if (segments.Length == 5 && method == "GET" && segments[4] == "notifications")
-        {
-            return Ok(engine.GetNotifications(incidentId));
-        }
-
-        if (segments.Length == 5 && method == "GET" && segments[4] == "recommendations")
-        {
-            return Ok(engine.GetRecommendations(incidentId));
-        }
-
-        if (segments.Length == 7 && method == "POST" && segments[4] == "recommendations" && Guid.TryParse(segments[5], out var recommendationId) && segments[6] == "status")
-        {
-            return Ok(engine.UpdateRecommendationStatus(incidentId, recommendationId, await ReadJson<UpdateRecommendationStatusRequest>(request), correlationId));
-        }
-
-        if (segments.Length == 5 && method == "POST" && segments[4] == "acknowledge")
-        {
-            return Ok(engine.AcknowledgeIncident(incidentId, await ReadJson<AcknowledgeIncidentRequest>(request), correlationId));
-        }
-
-        if (segments.Length == 5 && method == "POST" && segments[4] == "assign")
-        {
-            return Ok(engine.AssignIncident(incidentId, await ReadJson<AssignIncidentRequest>(request), correlationId));
-        }
-
-        if (segments.Length == 5 && method == "POST" && segments[4] == "escalate")
-        {
-            return Ok(engine.EscalateIncident(incidentId, await ReadJson<EscalateIncidentRequest>(request), correlationId));
-        }
-
-        if (segments.Length == 5 && method == "POST" && segments[4] == "resolve")
-        {
-            return Ok(engine.ResolveIncident(incidentId, await ReadJson<ResolveIncidentRequest>(request), correlationId));
-        }
-
-        if (segments.Length == 5 && method == "POST" && segments[4] == "close")
-        {
-            return Ok(engine.CloseIncident(incidentId, correlationId));
-        }
-
-        if (segments.Length == 5 && method == "POST" && segments[4] == "reopen")
-        {
-            return Ok(engine.ReopenIncident(incidentId, await ReadJson<ReopenIncidentRequest>(request), correlationId));
-        }
-
-        if (segments.Length == 5 && method == "POST" && segments[4] == "postmortem")
-        {
-            return Ok(engine.GeneratePostmortem(incidentId, correlationId));
-        }
-
-        if (segments.Length == 5 && method == "PUT" && segments[4] == "postmortem")
-        {
-            return Ok(engine.UpdatePostmortem(incidentId, await ReadJson<UpdatePostmortemRequest>(request), correlationId));
-        }
-
-        if (segments.Length == 5 && method == "GET" && segments[4] == "postmortem")
-        {
-            var postmortem = engine.GetPostmortemForIncident(incidentId);
-            return postmortem is null ? NotFound() : Ok(postmortem);
-        }
-    }
-
-    return NotFound();
-}
-
-async Task<T> ReadJson<T>(HttpListenerRequest request)
+app.MapGet("/api/v1/incidents/{id:guid}", (Guid id, IncidentFlowEngine e) =>
 {
-    using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
-    var body = await reader.ReadToEndAsync();
-    return JsonSerializer.Deserialize<T>(body, jsonOptions)
-        ?? throw new ArgumentException("Request body is required.");
-}
+    var incident = e.GetIncident(id);
+    return incident is null ? Results.NotFound(new { error = "Not found." }) : Results.Ok(incident);
+});
 
-async Task<T> ReadJsonOrDefault<T>(HttpListenerRequest request, T fallback)
+app.MapGet("/api/v1/incidents/{id:guid}/timeline", (Guid id, IncidentFlowEngine e) => e.GetTimeline(id));
+app.MapGet("/api/v1/incidents/{id:guid}/notifications", (Guid id, IncidentFlowEngine e) => e.GetNotifications(id));
+app.MapGet("/api/v1/incidents/{id:guid}/recommendations", (Guid id, IncidentFlowEngine e) => e.GetRecommendations(id));
+
+app.MapGet("/api/v1/incidents/{id:guid}/postmortem", (Guid id, IncidentFlowEngine e) =>
 {
-    using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
-    var body = await reader.ReadToEndAsync();
-    if (string.IsNullOrWhiteSpace(body))
-    {
-        return fallback;
-    }
+    var pm = e.GetPostmortemForIncident(id);
+    return pm is null ? Results.NotFound(new { error = "Not found." }) : Results.Ok(pm);
+});
 
-    return JsonSerializer.Deserialize<T>(body, jsonOptions)
-        ?? fallback;
-}
+app.MapPost("/api/v1/incidents/{id:guid}/acknowledge", (Guid id, AcknowledgeIncidentRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.AcknowledgeIncident(id, req, CorrelationId(ctx))));
 
-ReportFilter ReportFilterFrom(HttpListenerRequest request)
+app.MapPost("/api/v1/incidents/{id:guid}/assign", (Guid id, AssignIncidentRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.AssignIncident(id, req, CorrelationId(ctx))));
+
+app.MapPost("/api/v1/incidents/{id:guid}/escalate", (Guid id, EscalateIncidentRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.EscalateIncident(id, req, CorrelationId(ctx))));
+
+app.MapPost("/api/v1/incidents/{id:guid}/resolve", (Guid id, ResolveIncidentRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.ResolveIncident(id, req, CorrelationId(ctx))));
+
+app.MapPost("/api/v1/incidents/{id:guid}/close", (Guid id, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.CloseIncident(id, CorrelationId(ctx))));
+
+app.MapPost("/api/v1/incidents/{id:guid}/reopen", (Guid id, ReopenIncidentRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.ReopenIncident(id, req, CorrelationId(ctx))));
+
+app.MapPost("/api/v1/incidents/{id:guid}/postmortem", (Guid id, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.GeneratePostmortem(id, CorrelationId(ctx))));
+
+app.MapPut("/api/v1/incidents/{id:guid}/postmortem", (Guid id, UpdatePostmortemRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.UpdatePostmortem(id, req, CorrelationId(ctx))));
+
+app.MapPost("/api/v1/incidents/{id:guid}/recommendations/{recId:guid}/status",
+    (Guid id, Guid recId, UpdateRecommendationStatusRequest req, HttpContext ctx, IncidentFlowEngine e) =>
+        Results.Ok(e.UpdateRecommendationStatus(id, recId, req, CorrelationId(ctx))));
+
+app.MapPost("/api/v1/incidents/escalation-sweep", async (HttpContext ctx, IncidentFlowEngine e) =>
 {
-    return new ReportFilter(request.QueryString["serviceName"], request.QueryString["environment"]);
-}
+    EscalationSweepRequest req = new();
+    if (ctx.Request.ContentLength > 0)
+        req = await ctx.Request.ReadFromJsonAsync<EscalationSweepRequest>() ?? req;
+    return Results.Ok(e.RunEscalationSweep(req, CorrelationId(ctx)));
+});
 
-bool IsAuthorized(HttpListenerRequest request, string path)
-{
-    var configuredApiKey = Environment.GetEnvironmentVariable("INCIDENTFLOW_API_KEY");
-    if (string.IsNullOrWhiteSpace(configuredApiKey)
-        || path == "/"
-        || path.StartsWith("/health/", StringComparison.OrdinalIgnoreCase))
-    {
-        return true;
-    }
+// Events
+app.MapGet("/api/v1/events", (IncidentFlowEngine e) => e.GetEvents());
+app.MapGet("/api/v1/events/outbox", (IncidentFlowEngine e) => e.GetOutboxMessages());
+app.MapGet("/api/v1/events/inbox", (IncidentFlowEngine e) => e.GetInboxMessages());
 
-    return request.Headers[ApiKeyHeader] == configuredApiKey;
-}
+// Notifications
+app.MapPost("/api/v1/notifications/retry-failed", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.RetryFailedNotifications(CorrelationId(ctx))));
 
-async Task WriteJson(HttpListenerResponse response, int statusCode, object body)
-{
-    response.StatusCode = statusCode;
-    response.ContentType = "application/json";
-    var json = JsonSerializer.Serialize(body, jsonOptions);
-    var bytes = Encoding.UTF8.GetBytes(json);
-    response.ContentLength64 = bytes.Length;
-    await response.OutputStream.WriteAsync(bytes, 0, bytes.Length);
-    response.OutputStream.Close();
-}
+// Reports
+app.MapGet("/api/v1/reports/summary", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.GetReport(ReportFilter(ctx))));
 
-RouteResult Ok(object body) => new(200, body);
-RouteResult Accepted(object body) => new(202, body);
-RouteResult NotFound() => new(404, new { error = "Not found." });
+app.MapPost("/api/v1/reports/rebuild", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.RebuildReport(ReportFilter(ctx), CorrelationId(ctx))));
 
-internal sealed record RouteResult(int StatusCode, object Body);
+app.MapGet("/api/v1/reports/service-reliability", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.GetReport(ReportFilter(ctx)).TopFailingServices));
+
+app.MapGet("/api/v1/reports/mtta", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(new { minutes = e.GetReport(ReportFilter(ctx)).MeanTimeToAcknowledgeMinutes }));
+
+app.MapGet("/api/v1/reports/mttr", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(new { minutes = e.GetReport(ReportFilter(ctx)).MeanTimeToResolveMinutes }));
+
+app.MapGet("/api/v1/reports/severity-breakdown", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.GetReport(ReportFilter(ctx)).SeverityBreakdown));
+
+app.MapGet("/api/v1/reports/top-failing-services", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.GetReport(ReportFilter(ctx)).TopFailingServices));
+
+app.MapGet("/api/v1/reports/deployment-regressions", (HttpContext ctx, IncidentFlowEngine e) =>
+    Results.Ok(e.GetReport(ReportFilter(ctx)).DeploymentRegressionStats));
+
+// Runtime
+app.MapGet("/api/v1/runtime/readiness", (IncidentFlowEngine e) => e.GetRuntimeReadiness());
+
+app.Run();
