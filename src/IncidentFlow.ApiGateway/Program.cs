@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using IncidentFlow.Core;
 using IncidentFlow.ServiceDefaults;
 using Microsoft.AspNetCore.Diagnostics;
+using Yarp.ReverseProxy.Configuration;
 
 const string CorrelationIdHeader = "x-correlation-id";
 const string ApiKeyHeader = "x-api-key";
@@ -15,6 +16,38 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
     o.SerializerOptions.WriteIndented = true;
 });
+
+// YARP — proxy all /api/v1/signals/* to Ingestion.Api
+// Aspire injects: services__ingestion__https__0 / services__ingestion__http__0
+var ingestionBase =
+    builder.Configuration["services:ingestion:https:0"] ??
+    builder.Configuration["services:ingestion:http:0"] ??
+    "http://ingestion";
+
+var yarpRoutes = new[]
+{
+    new RouteConfig
+    {
+        RouteId = "signals",
+        ClusterId = "ingestion",
+        Match = new RouteMatch { Path = "/api/v1/signals/{**remainder}" }
+    }
+};
+
+var yarpClusters = new[]
+{
+    new ClusterConfig
+    {
+        ClusterId = "ingestion",
+        Destinations = new Dictionary<string, DestinationConfig>
+        {
+            ["ingestion/0"] = new DestinationConfig { Address = ingestionBase }
+        }
+    }
+};
+
+builder.Services.AddReverseProxy()
+    .LoadFromMemory(yarpRoutes, yarpClusters);
 
 var app = builder.Build();
 
@@ -60,6 +93,7 @@ app.Use(async (ctx, next) =>
 });
 
 app.MapDefaultEndpoints();
+app.MapReverseProxy();
 
 static string CorrelationId(HttpContext ctx) =>
     ctx.Items[CorrelationIdHeader] as string ?? Guid.NewGuid().ToString("N");
@@ -76,30 +110,6 @@ app.MapGet("/", () => new
     status = "running",
     workflow = "signals -> detection -> correlation -> incident -> notification -> timeline -> recommendation -> resolution -> postmortem -> reporting"
 });
-
-// Signals
-app.MapPost("/api/v1/signals/errors", (ErrorSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Json(e.IngestError(req, CorrelationId(ctx)), statusCode: 202));
-
-app.MapPost("/api/v1/signals/logs", (LogSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Json(e.IngestLog(req, CorrelationId(ctx)), statusCode: 202));
-
-app.MapPost("/api/v1/signals/metrics", (MetricSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Json(e.IngestMetric(req, CorrelationId(ctx)), statusCode: 202));
-
-app.MapPost("/api/v1/signals/traces", (TraceSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Json(e.IngestTrace(req, CorrelationId(ctx)), statusCode: 202));
-
-app.MapPost("/api/v1/signals/health-checks", (HealthCheckSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Json(e.IngestHealthCheck(req, CorrelationId(ctx)), statusCode: 202));
-
-app.MapPost("/api/v1/signals/deployments", (DeploymentSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Json(e.IngestDeployment(req, CorrelationId(ctx)), statusCode: 202));
-
-app.MapPost("/api/v1/signals/user-reports", (UserReportSignalRequest req, HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Json(e.IngestUserReport(req, CorrelationId(ctx)), statusCode: 202));
-
-app.MapGet("/api/v1/signals", (IncidentFlowEngine e) => e.GetSignals());
 
 // Incidents
 app.MapGet("/api/v1/incidents", (IncidentFlowEngine e) => e.GetIncidents());

@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\IncidentFlow.Core\IncidentFlow.Core.csproj" />
     <ProjectReference Include="..\IncidentFlow.ServiceDefaults\IncidentFlow.ServiceDefaults.csproj" />
   </ItemGroup>

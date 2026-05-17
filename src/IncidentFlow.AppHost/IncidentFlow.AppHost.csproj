@@ -11,7 +11,15 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.AppHost" Version="8.2.2" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="8.2.2" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="8.2.2" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="8.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\IncidentFlow.ApiGateway\IncidentFlow.ApiGateway.csproj" />
+    <ProjectReference Include="..\Services\IncidentFlow.Services.Ingestion.Api\IncidentFlow.Services.Ingestion.Api.csproj" />
+    <ProjectReference Include="..\Services\IncidentFlow.Services.Detection.Worker\IncidentFlow.Services.Detection.Worker.csproj" />
   </ItemGroup>
 
 </Project>
