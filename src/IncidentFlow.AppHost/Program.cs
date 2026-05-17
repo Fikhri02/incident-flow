@@ -11,6 +11,7 @@ var rabbit = builder.AddRabbitMQ("rabbitmq")
 
 var ingestionDb = postgres.AddDatabase("ingestion-db");
 var incidentDb = postgres.AddDatabase("incident-db");
+var timelineDb = postgres.AddDatabase("timeline-db");
 
 var ingestion = builder.AddProject<Projects.IncidentFlow_Services_Ingestion_Api>("ingestion")
     .WithReference(ingestionDb)
@@ -23,8 +24,16 @@ var incident = builder.AddProject<Projects.IncidentFlow_Services_Incident_Api>("
 builder.AddProject<Projects.IncidentFlow_Services_Detection_Worker>("detection")
     .WithReference(rabbit);
 
+var timeline = builder.AddProject<Projects.IncidentFlow_Services_Timeline_Api>("timeline")
+    .WithReference(timelineDb)
+    .WithReference(rabbit);
+
+builder.AddProject<Projects.IncidentFlow_Services_Notification_Worker>("notification")
+    .WithReference(rabbit);
+
 builder.AddProject<Projects.IncidentFlow_ApiGateway>("api-gateway")
     .WithReference(ingestion)
-    .WithReference(incident);
+    .WithReference(incident)
+    .WithReference(timeline);
 
 builder.Build().Run();

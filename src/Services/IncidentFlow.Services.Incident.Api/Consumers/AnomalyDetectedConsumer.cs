@@ -1,5 +1,6 @@
 using System.Text.Json;
 using IncidentFlow.BuildingBlocks.Contracts;
+using IncidentFlow.BuildingBlocks.EventBus;
 using IncidentFlow.Services.Incident.Api.Data;
 using IncidentFlow.Services.Incident.Api.Models;
 using MassTransit;
@@ -7,14 +8,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IncidentFlow.Services.Incident.Api.Consumers;
 
-public sealed class AnomalyDetectedConsumer(IncidentDbContext db, ILogger<AnomalyDetectedConsumer> logger)
+public sealed class AnomalyDetectedConsumer(IncidentDbContext db, IEventBus bus, ILogger<AnomalyDetectedConsumer> logger)
     : IConsumer<AnomalyDetected>
 {
     public async Task Consume(ConsumeContext<AnomalyDetected> context)
     {
         var msg = context.Message;
 
-        // Suppress duplicate open incidents for the same service+env+fingerprint
         var existing = await db.Incidents.FirstOrDefaultAsync(i =>
             i.ServiceName == msg.ServiceName &&
             i.Environment == msg.Environment &&
@@ -49,6 +49,13 @@ public sealed class AnomalyDetectedConsumer(IncidentDbContext db, ILogger<Anomal
 
         db.Incidents.Add(incident);
         await db.SaveChangesAsync(context.CancellationToken);
+
+        await bus.PublishAsync(new IncidentCreated(
+            incident.IncidentId, incident.ServiceName, incident.Environment,
+            incident.Region, incident.Fingerprint, incident.DeploymentId,
+            incident.Severity, incident.RuleName, incident.Summary,
+            incident.DetectedAt, incident.CorrelationId),
+            context.CancellationToken);
 
         logger.LogInformation("Incident {IncidentId} created for {Service}/{Env} [{Severity}]",
             incident.IncidentId, incident.ServiceName, incident.Environment, incident.Severity);

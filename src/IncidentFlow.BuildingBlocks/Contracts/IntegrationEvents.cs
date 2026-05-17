@@ -80,6 +80,47 @@ public sealed record HealthCheckSignalReceived(
     string? IdempotencyKey = null
 );
 
+// Incident lifecycle events — published by Incident.Api
+public sealed record IncidentCreated(
+    Guid IncidentId,
+    string ServiceName,
+    string Environment,
+    string? Region,
+    string? Fingerprint,
+    string? DeploymentId,
+    string Severity,
+    string RuleName,
+    string Summary,
+    DateTimeOffset DetectedAt,
+    string CorrelationId
+);
+
+public sealed record IncidentAcknowledged(
+    Guid IncidentId,
+    string ServiceName,
+    string Environment,
+    string AcknowledgedBy,
+    DateTimeOffset AcknowledgedAt,
+    string CorrelationId
+);
+
+public sealed record IncidentResolved(
+    Guid IncidentId,
+    string ServiceName,
+    string Environment,
+    string ResolvedBy,
+    DateTimeOffset ResolvedAt,
+    string CorrelationId
+);
+
+public sealed record IncidentClosed(
+    Guid IncidentId,
+    string ServiceName,
+    string Environment,
+    DateTimeOffset ClosedAt,
+    string CorrelationId
+);
+
 // Anomaly events — published by Detection
 public sealed record AnomalyDetected(
     Guid AnomalyId,

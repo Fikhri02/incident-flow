@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>incidentflow-notification-worker</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.3.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\IncidentFlow.BuildingBlocks\IncidentFlow.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\IncidentFlow.ServiceDefaults\IncidentFlow.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

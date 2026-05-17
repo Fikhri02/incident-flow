@@ -1,7 +1,9 @@
+using IncidentFlow.BuildingBlocks.EventBus;
 using IncidentFlow.ServiceDefaults;
 using IncidentFlow.Services.Incident.Api.Consumers;
 using IncidentFlow.Services.Incident.Api.Data;
 using IncidentFlow.Services.Incident.Api.Endpoints;
+using IncidentFlow.Services.Incident.Api.Messaging;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +11,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddNpgsqlDbContext<IncidentDbContext>("incident-db");
+
+builder.Services.AddScoped<IEventBus, MassTransitEventBus>();
 
 builder.Services.AddMassTransit(x =>
 {

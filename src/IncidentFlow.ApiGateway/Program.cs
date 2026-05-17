@@ -29,6 +29,11 @@ var incidentBase =
     builder.Configuration["services:incident:http:0"] ??
     "http://incident";
 
+var timelineBase =
+    builder.Configuration["services:timeline:https:0"] ??
+    builder.Configuration["services:timeline:http:0"] ??
+    "http://timeline";
+
 var yarpRoutes = new[]
 {
     new RouteConfig
@@ -42,6 +47,12 @@ var yarpRoutes = new[]
         RouteId = "incidents",
         ClusterId = "incident",
         Match = new RouteMatch { Path = "/api/v1/incidents/{**remainder}" }
+    },
+    new RouteConfig
+    {
+        RouteId = "timeline",
+        ClusterId = "timeline",
+        Match = new RouteMatch { Path = "/api/v1/timeline/{**remainder}" }
     }
 };
 
@@ -61,6 +72,14 @@ var yarpClusters = new[]
         Destinations = new Dictionary<string, DestinationConfig>
         {
             ["incident/0"] = new DestinationConfig { Address = incidentBase }
+        }
+    },
+    new ClusterConfig
+    {
+        ClusterId = "timeline",
+        Destinations = new Dictionary<string, DestinationConfig>
+        {
+            ["timeline/0"] = new DestinationConfig { Address = timelineBase }
         }
     }
 };
