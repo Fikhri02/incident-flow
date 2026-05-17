@@ -1,0 +1,18 @@
+Console.WriteLine("IncidentFlow AppHost");
+Console.WriteLine();
+Console.WriteLine("This lightweight AppHost documents the complete local portfolio runtime.");
+Console.WriteLine("External Aspire/YARP/RabbitMQ/Redis/PostgreSQL/OpenTelemetry adapters are deferred until the .NET 8 SDK and packages are available.");
+Console.WriteLine();
+Console.WriteLine("Run API:");
+Console.WriteLine("  dotnet run --project src/IncidentFlow.ApiGateway");
+Console.WriteLine();
+Console.WriteLine("Run smoke workflow:");
+Console.WriteLine("  dotnet run --project tests/IncidentFlow.SmokeTests");
+Console.WriteLine();
+Console.WriteLine("Run contract checks:");
+Console.WriteLine("  dotnet run --project tests/IncidentFlow.ContractTests");
+Console.WriteLine();
+Console.WriteLine("Read docs:");
+Console.WriteLine("  docs/architecture/overview.md");
+Console.WriteLine("  docs/api/http-api.md");
+Console.WriteLine("  docs/diagrams/incidentflow-diagrams.md");

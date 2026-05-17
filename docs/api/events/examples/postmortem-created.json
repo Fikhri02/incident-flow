@@ -1,0 +1,15 @@
+{
+  "eventId": "66666666-6666-4666-8666-666666666666",
+  "eventType": "PostmortemCreated",
+  "schemaVersion": 1,
+  "correlationId": "payment-demo-correlation",
+  "causationId": "55555555-5555-4555-8555-555555555555",
+  "source": "IncidentFlow.Postmortem",
+  "occurredAt": "2026-04-30T03:40:00+00:00",
+  "payload": {
+    "postmortemId": "77777777-7777-4777-8777-777777777777",
+    "incidentId": "55555555-5555-4555-8555-555555555555",
+    "status": "Draft",
+    "summary": "Payment timeout regression detected after deployment"
+  }
+}

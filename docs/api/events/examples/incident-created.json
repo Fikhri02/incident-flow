@@ -1,0 +1,18 @@
+{
+  "eventId": "33333333-3333-4333-8333-333333333333",
+  "eventType": "IncidentCreated",
+  "schemaVersion": 1,
+  "correlationId": "payment-demo-correlation",
+  "causationId": "44444444-4444-4444-8444-444444444444",
+  "source": "IncidentFlow.Incident",
+  "occurredAt": "2026-04-30T03:31:00+00:00",
+  "payload": {
+    "incidentId": "55555555-5555-4555-8555-555555555555",
+    "title": "SEV2 Payment API issue in production",
+    "severity": "SEV2",
+    "status": "Open",
+    "affectedService": "Payment API",
+    "environment": "production",
+    "ownerTeamId": "service-owner"
+  }
+}
