@@ -27,6 +27,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentFlow.Services.Inges
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentFlow.Services.Detection.Worker", "src\Services\IncidentFlow.Services.Detection.Worker\IncidentFlow.Services.Detection.Worker.csproj", "{1EC5AD29-34B4-4AB7-B43E-F2EA1C906FAD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IncidentFlow.Services.Incident.Api", "src\Services\IncidentFlow.Services.Incident.Api\IncidentFlow.Services.Incident.Api.csproj", "{89D4071A-BCAF-4AB5-BC26-5ED8176E822D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -72,6 +74,10 @@ Global
 		{1EC5AD29-34B4-4AB7-B43E-F2EA1C906FAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1EC5AD29-34B4-4AB7-B43E-F2EA1C906FAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1EC5AD29-34B4-4AB7-B43E-F2EA1C906FAD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{89D4071A-BCAF-4AB5-BC26-5ED8176E822D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{89D4071A-BCAF-4AB5-BC26-5ED8176E822D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{89D4071A-BCAF-4AB5-BC26-5ED8176E822D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{89D4071A-BCAF-4AB5-BC26-5ED8176E822D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{716430E4-C739-4E0A-B1B4-DA23EC472385} = {12C95892-DA36-4F5D-95E4-515E7DE9AAF9}
@@ -84,5 +90,6 @@ Global
 		{85CEE842-9C82-4FDF-A739-3D0CB6083EA5} = {12C95892-DA36-4F5D-95E4-515E7DE9AAF9}
 		{62E0C537-FB47-4E6C-A008-5B0FD41AF0E4} = {85CEE842-9C82-4FDF-A739-3D0CB6083EA5}
 		{1EC5AD29-34B4-4AB7-B43E-F2EA1C906FAD} = {85CEE842-9C82-4FDF-A739-3D0CB6083EA5}
+		{89D4071A-BCAF-4AB5-BC26-5ED8176E822D} = {85CEE842-9C82-4FDF-A739-3D0CB6083EA5}
 	EndGlobalSection
 EndGlobal
