@@ -2,9 +2,7 @@ using IncidentFlow.BuildingBlocks.EventBus;
 using IncidentFlow.IntegrationTests.Shared;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -24,14 +22,11 @@ public sealed class IngestionApiFactory : WebApplicationFactory<Program>, IAsync
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Point the DB connection at the Testcontainer
-        builder.ConfigureAppConfiguration(cfg =>
-        {
-            cfg.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:ingestion-db"] = _postgres.GetConnectionString()
-            });
-        });
+        // UseSetting, not ConfigureAppConfiguration: Aspire reads the connection string while
+        // Program registers services, before late configuration sources are applied.
+        builder.UseSetting("ConnectionStrings:ingestion-db", _postgres.GetConnectionString());
+        // The bus is built (health checks resolve it) but never started: its hosted services are removed.
+        builder.UseSetting("ConnectionStrings:rabbitmq", "amqp://guest:guest@localhost:5672");
 
         builder.ConfigureServices(services =>
         {
@@ -41,11 +36,7 @@ public sealed class IngestionApiFactory : WebApplicationFactory<Program>, IAsync
             services.AddScoped<IEventBus, NullEventBus>();
 
             // Remove MassTransit hosted services so no RabbitMQ connection is attempted
-            var massTransitHosted = services
-                .Where(d => d.ServiceType == typeof(IHostedService) &&
-                            d.ImplementationType?.Assembly.GetName().Name?.StartsWith("MassTransit") == true)
-                .ToList();
-            foreach (var d in massTransitHosted) services.Remove(d);
+            services.RemoveMassTransitHostedServices();
         });
     }
 }
