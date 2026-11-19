@@ -25,6 +25,8 @@
     <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Detection.Worker\IncidentFlow.Services.Detection.Worker.csproj" />
     <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Correlation.Worker\IncidentFlow.Services.Correlation.Worker.csproj" />
     <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Ingestion.Api\IncidentFlow.Services.Ingestion.Api.csproj" />
+    <!-- Aliased: both APIs declare a top-level Program class -->
+    <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Incident.Api\IncidentFlow.Services.Incident.Api.csproj" Aliases="incidentapi" />
   </ItemGroup>
 
 </Project>

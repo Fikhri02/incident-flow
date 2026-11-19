@@ -1,7 +1,6 @@
-using IncidentFlow.BuildingBlocks.Contracts;
-using IncidentFlow.BuildingBlocks.EventBus;
 using IncidentFlow.Services.Incident.Api.Data;
-using IncidentFlow.Services.Incident.Api.Models;
+using IncidentFlow.Services.Incident.Api.Domain;
+using IncidentFlow.Services.Incident.Api.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace IncidentFlow.Services.Incident.Api.Endpoints;
@@ -12,78 +11,73 @@ public static class IncidentEndpoints
     {
         var group = app.MapGroup("/api/v1/incidents").WithTags("incidents");
 
-        group.MapGet("/", async (IncidentDbContext db) =>
-            Results.Ok(await db.Incidents.OrderByDescending(i => i.DetectedAt).Take(100).ToListAsync()));
-
-        group.MapGet("/open", async (IncidentDbContext db) =>
-            Results.Ok(await db.Incidents
-                .Where(i => i.Status == IncidentStatus.Open || i.Status == IncidentStatus.Acknowledged)
-                .OrderByDescending(i => i.DetectedAt)
-                .ToListAsync()));
-
-        group.MapGet("/{id:guid}", async (Guid id, IncidentDbContext db) =>
+        // Queries read straight from the DbContext; commands go through the aggregate.
+        group.MapGet("/", async (IncidentDbContext db, CancellationToken ct) =>
         {
-            var incident = await db.Incidents.FindAsync(id);
+            var incidents = await db.Incidents.AsNoTracking()
+                .OrderByDescending(i => i.DetectedAt).Take(100).ToListAsync(ct);
+            return Results.Ok(incidents.Select(IncidentResponse.From));
+        });
+
+        group.MapGet("/open", async (IncidentDbContext db, CancellationToken ct) =>
+        {
+            var incidents = await db.Incidents.AsNoTracking()
+                .Where(Domain.Incident.IsActive)
+                .OrderByDescending(i => i.DetectedAt).ToListAsync(ct);
+            return Results.Ok(incidents.Select(IncidentResponse.From));
+        });
+
+        group.MapGet("/{id:guid}", async (Guid id, IIncidentRepository incidents, CancellationToken ct) =>
+        {
+            var incident = await incidents.GetAsync(id, ct);
             return incident is null
                 ? Results.NotFound(new { error = "Incident not found." })
-                : Results.Ok(incident);
+                : Results.Ok(IncidentResponse.From(incident));
         });
 
-        group.MapPost("/{id:guid}/acknowledge", async (Guid id, AcknowledgeRequest req, IncidentDbContext db, IEventBus bus) =>
+        group.MapPost("/{id:guid}/acknowledge",
+            (Guid id, AcknowledgeRequest req, IIncidentRepository incidents, IncidentEventPublisher events,
+                TimeProvider clock, CancellationToken ct) =>
+                ChangeAsync(id, incidents, events, i => i.Acknowledge(req.AcknowledgedBy, clock.GetUtcNow()), ct));
+
+        group.MapPost("/{id:guid}/resolve",
+            (Guid id, ResolveRequest req, IIncidentRepository incidents, IncidentEventPublisher events,
+                TimeProvider clock, CancellationToken ct) =>
+                ChangeAsync(id, incidents, events, i => i.Resolve(req.ResolvedBy, clock.GetUtcNow()), ct));
+
+        group.MapPost("/{id:guid}/close",
+            (Guid id, IIncidentRepository incidents, IncidentEventPublisher events,
+                TimeProvider clock, CancellationToken ct) =>
+                ChangeAsync(id, incidents, events, i => i.Close(clock.GetUtcNow()), ct));
+    }
+
+    /// <summary>Load the aggregate, let it apply the change, save, then publish what it recorded.</summary>
+    private static async Task<IResult> ChangeAsync(
+        Guid id,
+        IIncidentRepository incidents,
+        IncidentEventPublisher events,
+        Action<Domain.Incident> change,
+        CancellationToken ct)
+    {
+        var incident = await incidents.GetAsync(id, ct);
+        if (incident is null) return Results.NotFound(new { error = "Incident not found." });
+
+        try
         {
-            var incident = await db.Incidents.FindAsync(id);
-            if (incident is null) return Results.NotFound(new { error = "Incident not found." });
-            if (incident.Status != IncidentStatus.Open)
-                return Results.Conflict(new { error = $"Cannot acknowledge incident in status '{incident.Status}'." });
-
-            incident.Status = IncidentStatus.Acknowledged;
-            incident.AcknowledgedAt = DateTimeOffset.UtcNow;
-            incident.AcknowledgedBy = req.AcknowledgedBy;
-            await db.SaveChangesAsync();
-
-            await bus.PublishAsync(new IncidentAcknowledged(
-                incident.IncidentId, incident.ServiceName, incident.Environment,
-                req.AcknowledgedBy, incident.AcknowledgedAt!.Value, incident.CorrelationId));
-
-            return Results.Ok(incident);
-        });
-
-        group.MapPost("/{id:guid}/resolve", async (Guid id, ResolveRequest req, IncidentDbContext db, IEventBus bus) =>
+            change(incident);
+        }
+        catch (IncidentTransitionException ex)
         {
-            var incident = await db.Incidents.FindAsync(id);
-            if (incident is null) return Results.NotFound(new { error = "Incident not found." });
-            if (incident.Status == IncidentStatus.Resolved || incident.Status == IncidentStatus.Closed)
-                return Results.Conflict(new { error = $"Incident is already '{incident.Status}'." });
-
-            incident.Status = IncidentStatus.Resolved;
-            incident.ResolvedAt = DateTimeOffset.UtcNow;
-            incident.ResolvedBy = req.ResolvedBy;
-            await db.SaveChangesAsync();
-
-            await bus.PublishAsync(new IncidentResolved(
-                incident.IncidentId, incident.ServiceName, incident.Environment,
-                req.ResolvedBy, incident.ResolvedAt!.Value, incident.CorrelationId));
-
-            return Results.Ok(incident);
-        });
-
-        group.MapPost("/{id:guid}/close", async (Guid id, IncidentDbContext db, IEventBus bus) =>
+            return Results.Conflict(new { error = ex.Message });
+        }
+        catch (ArgumentException ex)
         {
-            var incident = await db.Incidents.FindAsync(id);
-            if (incident is null) return Results.NotFound(new { error = "Incident not found." });
-            if (incident.Status == IncidentStatus.Closed)
-                return Results.Conflict(new { error = "Incident is already closed." });
+            return Results.BadRequest(new { error = ex.Message });
+        }
 
-            incident.Status = IncidentStatus.Closed;
-            incident.ClosedAt = DateTimeOffset.UtcNow;
-            await db.SaveChangesAsync();
-
-            await bus.PublishAsync(new IncidentClosed(
-                incident.IncidentId, incident.ServiceName, incident.Environment,
-                incident.ClosedAt!.Value, incident.CorrelationId));
-
-            return Results.Ok(incident);
-        });
+        await incidents.SaveChangesAsync(ct);
+        await events.PublishAsync(incident, ct);
+        return Results.Ok(IncidentResponse.From(incident));
     }
 }
 

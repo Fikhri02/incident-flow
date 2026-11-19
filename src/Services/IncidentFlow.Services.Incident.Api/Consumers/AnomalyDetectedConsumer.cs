@@ -1,61 +1,36 @@
-using System.Text.Json;
 using IncidentFlow.BuildingBlocks.Contracts;
-using IncidentFlow.BuildingBlocks.EventBus;
-using IncidentFlow.Services.Incident.Api.Data;
-using IncidentFlow.Services.Incident.Api.Models;
+using IncidentFlow.Services.Incident.Api.Domain;
+using IncidentFlow.Services.Incident.Api.Messaging;
 using MassTransit;
-using Microsoft.EntityFrameworkCore;
 
 namespace IncidentFlow.Services.Incident.Api.Consumers;
 
-public sealed class AnomalyDetectedConsumer(IncidentDbContext db, IEventBus bus, ILogger<AnomalyDetectedConsumer> logger)
+public sealed class AnomalyDetectedConsumer(
+    IIncidentRepository incidents,
+    IncidentEventPublisher events,
+    TimeProvider clock,
+    ILogger<AnomalyDetectedConsumer> logger)
     : IConsumer<AnomalyDetected>
 {
     public async Task Consume(ConsumeContext<AnomalyDetected> context)
     {
         var msg = context.Message;
+        var key = new IncidentKey(msg.ServiceName, msg.Environment, msg.Fingerprint);
 
-        var existing = await db.Incidents.FirstOrDefaultAsync(i =>
-            i.ServiceName == msg.ServiceName &&
-            i.Environment == msg.Environment &&
-            i.Fingerprint == msg.Fingerprint &&
-            (i.Status == IncidentStatus.Open || i.Status == IncidentStatus.Acknowledged),
-            context.CancellationToken);
-
-        if (existing is not null)
+        if (await incidents.FindActiveAsync(key, context.CancellationToken) is not null)
         {
             logger.LogDebug("Suppressed duplicate incident for {Service}/{Env} fingerprint={Fingerprint}",
                 msg.ServiceName, msg.Environment, msg.Fingerprint);
             return;
         }
 
-        var incident = new IncidentEntity
-        {
-            IncidentId = Guid.NewGuid(),
-            ServiceName = msg.ServiceName,
-            Environment = msg.Environment,
-            Region = msg.Region,
-            Fingerprint = msg.Fingerprint,
-            DeploymentId = msg.DeploymentId,
-            Severity = msg.Severity,
-            RuleName = msg.RuleName,
-            Summary = msg.Summary,
-            Status = IncidentStatus.Open,
-            DetectedAt = msg.DetectedAt,
-            CorrelationId = msg.CorrelationId,
-            SignalIdsJson = JsonSerializer.Serialize(msg.SignalIds),
-            CreatedAt = DateTimeOffset.UtcNow
-        };
+        var incident = Domain.Incident.Open(key, new IncidentDetails(
+            msg.Region, msg.DeploymentId, msg.Severity, msg.RuleName, msg.Summary,
+            msg.DetectedAt, msg.CorrelationId, msg.SignalIds), clock.GetUtcNow());
 
-        db.Incidents.Add(incident);
-        await db.SaveChangesAsync(context.CancellationToken);
-
-        await bus.PublishAsync(new IncidentCreated(
-            incident.IncidentId, incident.ServiceName, incident.Environment,
-            incident.Region, incident.Fingerprint, incident.DeploymentId,
-            incident.Severity, incident.RuleName, incident.Summary,
-            incident.DetectedAt, incident.CorrelationId),
-            context.CancellationToken);
+        incidents.Add(incident);
+        await incidents.SaveChangesAsync(context.CancellationToken);
+        await events.PublishAsync(incident, context.CancellationToken);
 
         logger.LogInformation("Incident {IncidentId} created for {Service}/{Env} [{Severity}]",
             incident.IncidentId, incident.ServiceName, incident.Environment, incident.Severity);
