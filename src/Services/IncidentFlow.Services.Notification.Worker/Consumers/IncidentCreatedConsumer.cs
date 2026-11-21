@@ -1,22 +1,22 @@
 using IncidentFlow.BuildingBlocks.Contracts;
+using IncidentFlow.Services.Notification.Worker.Notifications;
 using MassTransit;
 
 namespace IncidentFlow.Services.Notification.Worker.Consumers;
 
-public sealed class IncidentCreatedConsumer(ILogger<IncidentCreatedConsumer> logger)
+public sealed class IncidentCreatedConsumer(ILogger<IncidentCreatedConsumer> logger, IIncidentNotifier notifier)
     : IConsumer<IncidentCreated>
 {
-    public Task Consume(ConsumeContext<IncidentCreated> context)
+    public async Task Consume(ConsumeContext<IncidentCreated> context)
     {
         var msg = context.Message;
 
-        // In production this dispatches to PagerDuty / Slack / email.
-        // Structured log makes this observable via OTel.
+        // Structured log makes this observable via OTel; Slack gets the same message.
         logger.LogWarning(
             "[NOTIFY] New {Severity} incident {IncidentId} — {Service}/{Env} — {Summary}",
             msg.Severity.ToUpperInvariant(), msg.IncidentId,
             msg.ServiceName, msg.Environment, msg.Summary);
 
-        return Task.CompletedTask;
+        await notifier.NotifyAsync(msg, context.CancellationToken);
     }
 }
