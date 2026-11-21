@@ -8,9 +8,12 @@ using Xunit;
 
 namespace IncidentFlow.IntegrationTests.Ingestion;
 
-public sealed class IngestionApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
+public class IngestionApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder().Build();
+
+    /// <summary>Signals each source may send per minute; the real default is 1,000.</summary>
+    protected virtual int RateLimitPerMinute => 1000;
 
     public async Task InitializeAsync() => await _postgres.StartAsync();
 
@@ -25,6 +28,7 @@ public sealed class IngestionApiFactory : WebApplicationFactory<Program>, IAsync
         // UseSetting, not ConfigureAppConfiguration: Aspire reads the connection string while
         // Program registers services, before late configuration sources are applied.
         builder.UseSetting("ConnectionStrings:ingestion-db", _postgres.GetConnectionString());
+        builder.UseSetting("Ingestion:RateLimit:PermitsPerMinute", RateLimitPerMinute.ToString());
         // The bus is built (health checks resolve it) but never started: its hosted services are removed.
         builder.UseSetting("ConnectionStrings:rabbitmq", "amqp://guest:guest@localhost:5672");
 

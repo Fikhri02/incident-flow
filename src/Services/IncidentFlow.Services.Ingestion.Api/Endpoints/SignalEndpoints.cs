@@ -2,6 +2,7 @@ using IncidentFlow.BuildingBlocks.Contracts;
 using IncidentFlow.BuildingBlocks.EventBus;
 using IncidentFlow.Services.Ingestion.Api.Data;
 using IncidentFlow.Services.Ingestion.Api.Models;
+using IncidentFlow.Services.Ingestion.Api.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace IncidentFlow.Services.Ingestion.Api.Endpoints;
@@ -13,6 +14,22 @@ public static class SignalEndpoints
     public static void MapSignalEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/signals").WithTags("signals");
+
+        // One fixed window per source; a source over its limit gets 429 before anything is saved.
+        group.AddEndpointFilter(async (context, next) =>
+        {
+            var source = context.Arguments.OfType<ISignalSource>().FirstOrDefault();
+            if (source is null) return await next(context);
+
+            var limiter = context.HttpContext.RequestServices.GetRequiredService<SignalRateLimiter>();
+            if (limiter.TryAcquire(source, out var retryAfter)) return await next(context);
+
+            context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+            return Results.Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                title: "Rate limit exceeded",
+                detail: $"{source.SourceSystem}/{source.ServiceName}/{source.Environment} sent more than {limiter.PermitsPerMinute} signals this minute.");
+        });
 
         group.MapPost("/errors", async (ErrorSignalRequest req, HttpContext ctx, IngestionDbContext db, IEventBus bus) =>
         {
@@ -136,7 +153,7 @@ public sealed record ErrorSignalRequest(
     string Message, string Fingerprint,
     DateTimeOffset? OccurredAt = null, string? Region = null,
     string? TraceId = null, string? DeploymentId = null,
-    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null);
+    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null) : ISignalSource;
 
 public sealed record LogSignalRequest(
     string SourceSystem, string ServiceName, string Environment,
@@ -144,25 +161,25 @@ public sealed record LogSignalRequest(
     DateTimeOffset? OccurredAt = null, string? Region = null,
     string? TraceId = null, string? Fingerprint = null,
     string? DeploymentId = null, Dictionary<string, string>? Metadata = null,
-    string? IdempotencyKey = null);
+    string? IdempotencyKey = null) : ISignalSource;
 
 public sealed record MetricSignalRequest(
     string SourceSystem, string ServiceName, string Environment,
     string MetricName, double Value,
     DateTimeOffset? OccurredAt = null, string? Region = null,
-    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null);
+    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null) : ISignalSource;
 
 public sealed record DeploymentSignalRequest(
     string SourceSystem, string ServiceName, string Environment,
     string DeploymentId, string Version,
     DateTimeOffset? OccurredAt = null, string? Region = null,
-    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null);
+    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null) : ISignalSource;
 
 public sealed record HealthCheckSignalRequest(
     string SourceSystem, string ServiceName, string Environment,
     bool IsHealthy, string? Reason = null,
     DateTimeOffset? OccurredAt = null, string? Region = null,
-    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null);
+    Dictionary<string, string>? Metadata = null, string? IdempotencyKey = null) : ISignalSource;
 
 public sealed record SignalAcceptedResponse(
     Guid SignalId, string CorrelationId, bool Duplicate, string Message);

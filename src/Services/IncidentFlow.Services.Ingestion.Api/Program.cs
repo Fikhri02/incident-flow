@@ -3,6 +3,7 @@ using IncidentFlow.ServiceDefaults;
 using IncidentFlow.Services.Ingestion.Api.Data;
 using IncidentFlow.Services.Ingestion.Api.Endpoints;
 using IncidentFlow.Services.Ingestion.Api.Messaging;
+using IncidentFlow.Services.Ingestion.Api.RateLimiting;
 using IncidentFlow.BuildingBlocks.Messaging;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ builder.Services.AddMassTransit(x =>
 });
 
 builder.Services.AddScoped<IEventBus, MassTransitEventBus>();
+builder.Services.AddSingleton<SignalRateLimiter>();
 
 var app = builder.Build();
 
