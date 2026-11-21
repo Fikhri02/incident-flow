@@ -2,6 +2,7 @@ using IncidentFlow.ServiceDefaults;
 using IncidentFlow.Services.Timeline.Api.Consumers;
 using IncidentFlow.Services.Timeline.Api.Data;
 using IncidentFlow.Services.Timeline.Api.Endpoints;
+using IncidentFlow.BuildingBlocks.Messaging;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,6 +13,7 @@ builder.AddNpgsqlDbContext<TimelineDbContext>("timeline-db");
 
 builder.Services.AddMassTransit(x =>
 {
+    x.UseServiceEndpointNames("timeline");
     x.AddConsumer<IncidentCreatedConsumer>();
     x.AddConsumer<IncidentAcknowledgedConsumer>();
     x.AddConsumer<IncidentResolvedConsumer>();
@@ -23,6 +25,7 @@ builder.Services.AddMassTransit(x =>
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
+        cfg.UseDefaultRetry();
         cfg.ConfigureEndpoints(ctx);
     });
 });

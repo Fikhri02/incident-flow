@@ -1,6 +1,7 @@
 using IncidentFlow.ServiceDefaults;
 using IncidentFlow.Services.Detection.Worker.Consumers;
 using IncidentFlow.Services.Detection.Worker.Detection;
+using IncidentFlow.BuildingBlocks.Messaging;
 using MassTransit;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -12,11 +13,13 @@ builder.Services.AddSingleton<SpikeDetector>();
 
 builder.Services.AddMassTransit(x =>
 {
+    x.UseServiceEndpointNames("detection");
     x.AddConsumer<ErrorSignalConsumer>();
 
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
+        cfg.UseDefaultRetry();
         cfg.ConfigureEndpoints(ctx);
     });
 });

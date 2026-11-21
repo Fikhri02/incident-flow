@@ -5,6 +5,7 @@ using IncidentFlow.Services.Incident.Api.Data;
 using IncidentFlow.Services.Incident.Api.Domain;
 using IncidentFlow.Services.Incident.Api.Endpoints;
 using IncidentFlow.Services.Incident.Api.Messaging;
+using IncidentFlow.BuildingBlocks.Messaging;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,11 +21,13 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddMassTransit(x =>
 {
+    x.UseServiceEndpointNames("incident");
     x.AddConsumer<AnomalyDetectedConsumer>();
 
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
+        cfg.UseDefaultRetry();
         cfg.ConfigureEndpoints(ctx);
     });
 });

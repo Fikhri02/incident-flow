@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Incident.Api\IncidentFlow.Services.Incident.Api.csproj" />
+    <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Notification.Worker\IncidentFlow.Services.Notification.Worker.csproj" />
   </ItemGroup>
 
 </Project>

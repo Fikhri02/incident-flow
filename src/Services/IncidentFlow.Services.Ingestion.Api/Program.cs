@@ -3,6 +3,7 @@ using IncidentFlow.ServiceDefaults;
 using IncidentFlow.Services.Ingestion.Api.Data;
 using IncidentFlow.Services.Ingestion.Api.Endpoints;
 using IncidentFlow.Services.Ingestion.Api.Messaging;
+using IncidentFlow.BuildingBlocks.Messaging;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,9 +14,11 @@ builder.AddNpgsqlDbContext<IngestionDbContext>("ingestion-db");
 
 builder.Services.AddMassTransit(x =>
 {
+    x.UseServiceEndpointNames("ingestion");
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
+        cfg.UseDefaultRetry();
         cfg.ConfigureEndpoints(ctx);
     });
 });
