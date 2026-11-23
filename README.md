@@ -89,6 +89,20 @@ dotnet run --project src/IncidentFlow.AppHost
 The Aspire dashboard lists every service with its endpoints, logs, traces, and metrics. PgAdmin,
 Redis Commander, and the RabbitMQ management plugin are started alongside the infrastructure.
 
+The dashboard opens on http://localhost:15080 and the gateway answers on http://localhost:5280. Every
+host has its own port in `Properties/launchSettings.json` (gateway 5280, Detection 5281, Correlation
+5282, Notification 5283, Reporting 5284, Ingestion 5285, Incident 5286, Timeline 5287); Aspire 8 builds
+each project's endpoints from that profile. A quick end-to-end check through the gateway:
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -s -X POST http://localhost:5280/api/v1/signals/errors -H 'content-type: application/json' \
+    -d '{"sourceSystem":"demo","serviceName":"payment-api","environment":"prod","message":"Timeout","fingerprint":"payment-timeout"}'
+done
+curl -s http://localhost:5280/api/v1/incidents         # one open incident
+curl -s http://localhost:5280/api/v1/reports/summary   # counted by Reporting
+```
+
 ### Database migrations
 
 Each PostgreSQL-backed service owns its own migrations and ships an `IDesignTimeDbContextFactory`,
