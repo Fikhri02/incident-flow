@@ -96,14 +96,28 @@ dotnet ef database update --project src/Services/IncidentFlow.Services.Timeline.
 ### Tests
 
 ```bash
+dotnet test tests/IncidentFlow.UnitTests
 dotnet test tests/IncidentFlow.IntegrationTests   # requires Docker
+dotnet test tests/IncidentFlow.Specs              # requires Docker (Redis)
+dotnet test tests/IncidentFlow.Contracts.Tests
 dotnet run  --project tests/IncidentFlow.SmokeTests
 dotnet run  --project tests/IncidentFlow.ContractTests
 ```
 
-`IntegrationTests` (xUnit, Testcontainers, FluentAssertions) exercises the spike detector and
-correlation engine against a real Redis instance, and the ingestion endpoints against a real
-PostgreSQL instance through `WebApplicationFactory`.
+- `UnitTests`: the Incident aggregate, the Slack notifier, messaging defaults and tracing setup.
+- `IntegrationTests` (xUnit, Testcontainers, FluentAssertions): the services against real PostgreSQL and
+  Redis through `WebApplicationFactory` and the MassTransit test harness, including the outbox, inbox,
+  duplicate-incident and Slack dedupe behaviour, the migration over existing duplicates, worker health
+  endpoints, rate limiting, and the gateway's correlation id (through YARP to a stub service).
+- `Specs` (Reqnroll): plain-language scenarios for the incident lifecycle, the detection threshold and the
+  per-source rate limit.
+- `Contracts.Tests`: pins the JSON shape of every integration event, so a renamed or removed field fails.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request: it installs the Aspire
+workload, builds the solution in Release, runs `dotnet test` on the solution (UnitTests, IntegrationTests,
+Specs, Contracts.Tests; results uploaded as .trx files), then runs SmokeTests and ContractTests with
+`dotnet run`. The SDK comes from `global.json` (8.0.400 or a later 8.0 feature band).
+Design decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 
 ## API
 
@@ -136,7 +150,9 @@ POST /api/v1/incidents/{id}/close
 ```
 
 Incoming anomalies are deduplicated against currently open incidents by service, environment, and
-fingerprint, so a sustained fault produces one incident rather than a stream of them.
+fingerprint, so a sustained fault produces one incident rather than a stream of them. A partial unique
+index on that key (while the incident is open or acknowledged) keeps two anomalies arriving at the same
+moment from opening two incidents; the one that loses is treated as already open.
 
 **Timeline** — `Timeline.Api`
 
@@ -145,15 +161,33 @@ GET /api/v1/timeline/incidents/{incidentId}
 GET /api/v1/timeline/correlation/{correlationId}
 ```
 
-**Operational** — every service exposes `/health/live` and `/health/ready` via ServiceDefaults.
+**Operational** — every service, the three workers included, exposes `/health/live` and
+`/health/ready` via ServiceDefaults. Traces include MassTransit's publish and consume spans, so a
+request can be followed across RabbitMQ in the Aspire dashboard.
 
 ## Integration events
 
-Defined in `IncidentFlow.BuildingBlocks`, all wrapped in a common `IntegrationEvent` envelope:
+Defined in `IncidentFlow.BuildingBlocks`:
 
 `ErrorSignalReceived` · `LogSignalReceived` · `MetricSignalReceived` · `DeploymentSignalReceived` ·
 `HealthCheckSignalReceived` · `AnomalyDetected` · `CorrelationFound` · `IncidentCreated` ·
 `IncidentAcknowledged` · `IncidentResolved` · `IncidentClosed`
+
+Each one travels in MassTransit's envelope (`MessageId`, `CorrelationId`, `ConversationId`,
+`SentTime`, `MessageType`). Every payload also carries the business `CorrelationId` that started at
+the signal's HTTP request (`x-correlation-id`); a publish filter copies it into the envelope's
+`CorrelationId` when it is a GUID.
+
+Delivery:
+
+- **Outbox** — Ingestion and Incident save an entity and its event in one transaction (MassTransit's
+  Entity Framework outbox); the event is delivered after the commit, so a crash in between loses nothing.
+- **Inbox** — Incident's and Timeline's consumers record each `MessageId` in the same transaction as
+  their write, so a redelivered message is skipped.
+- **Workers without a database** — Detection and Correlation use the in-memory outbox: a consumer's
+  publishes go out only if it succeeds. Notification remembers posted `MessageId`s in Redis for 24 hours,
+  so a redelivery never posts to Slack twice.
+- Failed messages are retried after 200 ms, 1 s and 5 s, then moved to the queue's `_error` queue.
 
 ## Project status
 
@@ -196,4 +230,4 @@ services.
 
 .NET 8 · ASP.NET Core Minimal APIs · .NET Aspire 8.2.2 · YARP 2.2 · MassTransit 8.3 / RabbitMQ ·
 PostgreSQL + EF Core 8 · Redis (StackExchange.Redis) · OpenTelemetry 1.11 · xUnit · Testcontainers ·
-FluentAssertions
+FluentAssertions · Reqnroll
