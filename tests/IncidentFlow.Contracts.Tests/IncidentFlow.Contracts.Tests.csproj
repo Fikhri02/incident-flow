@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pins the JSON shape of every message contract in BuildingBlocks/Contracts against a
+    checked-in snapshot (Snapshots/<Contract>.json). Renaming, removing, adding or retyping a
+    field fails here. To accept an intended change: UPDATE_CONTRACT_SNAPSHOTS=1 dotnet test,
+    then review the snapshot diff like any other code change.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" Version="6.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IncidentFlow.BuildingBlocks\IncidentFlow.BuildingBlocks.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Snapshots\*.json" CopyToOutputDirectory="PreserveNewest" LinkBase="Snapshots" />
+  </ItemGroup>
+
+</Project>

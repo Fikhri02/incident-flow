@@ -1,0 +1,14 @@
+{
+  "contract": "CorrelationFound",
+  "properties": {
+    "correlationGroupId": "string:uuid",
+    "correlationType": "string",
+    "correlationKey": "string",
+    "environment": "string",
+    "deploymentId": "string?",
+    "fingerprint": "string?",
+    "incidentIds": "array<string:uuid>",
+    "detectedAt": "string:date-time",
+    "correlationId": "string"
+  }
+}

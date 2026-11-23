@@ -1,0 +1,11 @@
+{
+  "contract": "IncidentAcknowledged",
+  "properties": {
+    "incidentId": "string:uuid",
+    "serviceName": "string",
+    "environment": "string",
+    "acknowledgedBy": "string",
+    "acknowledgedAt": "string:date-time",
+    "correlationId": "string"
+  }
+}

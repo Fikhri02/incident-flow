@@ -1,0 +1,17 @@
+{
+  "contract": "LogSignalReceived",
+  "properties": {
+    "signalId": "string:uuid",
+    "sourceSystem": "string",
+    "serviceName": "string",
+    "environment": "string",
+    "region": "string?",
+    "severity": "string",
+    "message": "string",
+    "fingerprint": "string?",
+    "traceId": "string?",
+    "occurredAt": "string:date-time",
+    "correlationId": "string",
+    "idempotencyKey": "string?"
+  }
+}

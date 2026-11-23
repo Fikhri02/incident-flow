@@ -1,0 +1,10 @@
+{
+  "contract": "IncidentClosed",
+  "properties": {
+    "incidentId": "string:uuid",
+    "serviceName": "string",
+    "environment": "string",
+    "closedAt": "string:date-time",
+    "correlationId": "string"
+  }
+}

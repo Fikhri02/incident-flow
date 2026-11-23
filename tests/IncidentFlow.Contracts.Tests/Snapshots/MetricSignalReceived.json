@@ -1,0 +1,15 @@
+{
+  "contract": "MetricSignalReceived",
+  "properties": {
+    "signalId": "string:uuid",
+    "sourceSystem": "string",
+    "serviceName": "string",
+    "environment": "string",
+    "region": "string?",
+    "metricName": "string",
+    "value": "number",
+    "occurredAt": "string:date-time",
+    "correlationId": "string",
+    "idempotencyKey": "string?"
+  }
+}

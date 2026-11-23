@@ -1,0 +1,15 @@
+{
+  "contract": "DeploymentSignalReceived",
+  "properties": {
+    "signalId": "string:uuid",
+    "sourceSystem": "string",
+    "serviceName": "string",
+    "environment": "string",
+    "region": "string?",
+    "deploymentId": "string",
+    "version": "string",
+    "occurredAt": "string:date-time",
+    "correlationId": "string",
+    "idempotencyKey": "string?"
+  }
+}

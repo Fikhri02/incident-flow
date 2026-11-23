@@ -1,0 +1,11 @@
+{
+  "contract": "IncidentResolved",
+  "properties": {
+    "incidentId": "string:uuid",
+    "serviceName": "string",
+    "environment": "string",
+    "resolvedBy": "string",
+    "resolvedAt": "string:date-time",
+    "correlationId": "string"
+  }
+}

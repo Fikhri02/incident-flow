@@ -1,0 +1,15 @@
+{
+  "contract": "HealthCheckSignalReceived",
+  "properties": {
+    "signalId": "string:uuid",
+    "sourceSystem": "string",
+    "serviceName": "string",
+    "environment": "string",
+    "region": "string?",
+    "isHealthy": "boolean",
+    "reason": "string?",
+    "occurredAt": "string:date-time",
+    "correlationId": "string",
+    "idempotencyKey": "string?"
+  }
+}

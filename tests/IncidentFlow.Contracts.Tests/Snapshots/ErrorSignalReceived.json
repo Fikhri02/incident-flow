@@ -1,0 +1,17 @@
+{
+  "contract": "ErrorSignalReceived",
+  "properties": {
+    "signalId": "string:uuid",
+    "sourceSystem": "string",
+    "serviceName": "string",
+    "environment": "string",
+    "region": "string?",
+    "fingerprint": "string",
+    "message": "string",
+    "traceId": "string?",
+    "deploymentId": "string?",
+    "occurredAt": "string:date-time",
+    "correlationId": "string",
+    "idempotencyKey": "string?"
+  }
+}

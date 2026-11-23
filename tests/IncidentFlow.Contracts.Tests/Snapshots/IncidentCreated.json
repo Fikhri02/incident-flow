@@ -1,0 +1,16 @@
+{
+  "contract": "IncidentCreated",
+  "properties": {
+    "incidentId": "string:uuid",
+    "serviceName": "string",
+    "environment": "string",
+    "region": "string?",
+    "fingerprint": "string?",
+    "deploymentId": "string?",
+    "severity": "string",
+    "ruleName": "string",
+    "summary": "string",
+    "detectedAt": "string:date-time",
+    "correlationId": "string"
+  }
+}
