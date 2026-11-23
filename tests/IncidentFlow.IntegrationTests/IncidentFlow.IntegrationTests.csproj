@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Incident.Api\IncidentFlow.Services.Incident.Api.csproj" Aliases="incidentapi" />
     <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Timeline.Api\IncidentFlow.Services.Timeline.Api.csproj" />
     <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Notification.Worker\IncidentFlow.Services.Notification.Worker.csproj" />
+    <ProjectReference Include="..\..\src\Services\IncidentFlow.Services.Reporting.Api\IncidentFlow.Services.Reporting.Api.csproj" />
     <!-- Aliased for the same reason: the gateway's Program class -->
     <ProjectReference Include="..\..\src\IncidentFlow.ApiGateway\IncidentFlow.ApiGateway.csproj" Aliases="gateway" />
   </ItemGroup>

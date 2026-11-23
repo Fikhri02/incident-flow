@@ -53,8 +53,17 @@ namespace IncidentFlow.Services.Timeline.Api.Migrations
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Payload")
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Sequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Sequence"));
 
                     b.Property<string>("ServiceName")
                         .IsRequired()
@@ -69,6 +78,9 @@ namespace IncidentFlow.Services.Timeline.Api.Migrations
                     b.HasKey("EntryId");
 
                     b.HasIndex("IncidentId");
+
+                    b.HasIndex("Sequence")
+                        .IsUnique();
 
                     b.HasIndex("CorrelationId", "OccurredAt");
 

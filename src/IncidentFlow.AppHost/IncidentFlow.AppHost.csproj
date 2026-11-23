@@ -24,6 +24,7 @@
     <ProjectReference Include="..\Services\IncidentFlow.Services.Correlation.Worker\IncidentFlow.Services.Correlation.Worker.csproj" />
     <ProjectReference Include="..\Services\IncidentFlow.Services.Notification.Worker\IncidentFlow.Services.Notification.Worker.csproj" />
     <ProjectReference Include="..\Services\IncidentFlow.Services.Timeline.Api\IncidentFlow.Services.Timeline.Api.csproj" />
+    <ProjectReference Include="..\Services\IncidentFlow.Services.Reporting.Api\IncidentFlow.Services.Reporting.Api.csproj" />
   </ItemGroup>
 
 </Project>

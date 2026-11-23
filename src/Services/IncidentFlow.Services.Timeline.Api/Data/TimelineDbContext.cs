@@ -21,6 +21,9 @@ public sealed class TimelineDbContext(DbContextOptions<TimelineDbContext> option
             e.Property(t => t.Actor).HasMaxLength(200);
             e.HasIndex(t => t.IncidentId);
             e.HasIndex(t => new { t.CorrelationId, t.OccurredAt });
+            e.Property(t => t.Sequence).UseIdentityByDefaultColumn();
+            e.HasIndex(t => t.Sequence).IsUnique();
+            e.Property(t => t.Payload).HasColumnType("jsonb");
         });
 
         // MassTransit inbox: one InboxState row per (MessageId, consumer) marks a message as consumed,

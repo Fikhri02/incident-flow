@@ -7,13 +7,16 @@ namespace IncidentFlow.UnitTests.Hosting;
 // The workers are web hosts (for /health). Without a launch profile each one binds Kestrel's default
 // port 5000, so the second worker to start fails with "address already in use". Aspire 8 also creates a
 // project's endpoints from its launch profile, so the profile is where each worker gets its own port.
+// Reporting is an API, but the gateway reaches it through the endpoint Aspire builds from the same
+// profile, so it is held to the same rule.
 public sealed class LaunchSettingsTests
 {
     private static readonly string[] Workers =
     [
         "src/Services/IncidentFlow.Services.Detection.Worker",
         "src/Services/IncidentFlow.Services.Correlation.Worker",
-        "src/Services/IncidentFlow.Services.Notification.Worker"
+        "src/Services/IncidentFlow.Services.Notification.Worker",
+        "src/Services/IncidentFlow.Services.Reporting.Api"
     ];
 
     private static string RepoRoot()

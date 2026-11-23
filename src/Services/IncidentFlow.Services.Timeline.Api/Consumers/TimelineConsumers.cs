@@ -1,3 +1,4 @@
+using System.Text.Json;
 using IncidentFlow.BuildingBlocks.Contracts;
 using IncidentFlow.Services.Timeline.Api.Data;
 using IncidentFlow.Services.Timeline.Api.Models;
@@ -12,7 +13,7 @@ public sealed class IncidentCreatedConsumer(TimelineDbContext db) : IConsumer<In
         var msg = context.Message;
         return TimelineAppend.Append(db, msg.IncidentId, "incident.created", msg.ServiceName, msg.Environment,
             $"Incident opened — {msg.Summary} [{msg.Severity}]", msg.CorrelationId, null,
-            msg.DetectedAt, context.CancellationToken);
+            msg.DetectedAt, msg, context.CancellationToken);
     }
 }
 
@@ -23,7 +24,7 @@ public sealed class IncidentAcknowledgedConsumer(TimelineDbContext db) : IConsum
         var msg = context.Message;
         return TimelineAppend.Append(db, msg.IncidentId, "incident.acknowledged", msg.ServiceName, msg.Environment,
             $"Incident acknowledged by {msg.AcknowledgedBy}", msg.CorrelationId, msg.AcknowledgedBy,
-            msg.AcknowledgedAt, context.CancellationToken);
+            msg.AcknowledgedAt, msg, context.CancellationToken);
     }
 }
 
@@ -34,7 +35,7 @@ public sealed class IncidentResolvedConsumer(TimelineDbContext db) : IConsumer<I
         var msg = context.Message;
         return TimelineAppend.Append(db, msg.IncidentId, "incident.resolved", msg.ServiceName, msg.Environment,
             $"Incident resolved by {msg.ResolvedBy}", msg.CorrelationId, msg.ResolvedBy,
-            msg.ResolvedAt, context.CancellationToken);
+            msg.ResolvedAt, msg, context.CancellationToken);
     }
 }
 
@@ -44,7 +45,7 @@ public sealed class IncidentClosedConsumer(TimelineDbContext db) : IConsumer<Inc
     {
         var msg = context.Message;
         return TimelineAppend.Append(db, msg.IncidentId, "incident.closed", msg.ServiceName, msg.Environment,
-            "Incident closed", msg.CorrelationId, null, msg.ClosedAt, context.CancellationToken);
+            "Incident closed", msg.CorrelationId, null, msg.ClosedAt, msg, context.CancellationToken);
     }
 }
 
@@ -55,7 +56,7 @@ public sealed class AnomalyDetectedConsumer(TimelineDbContext db) : IConsumer<An
         var msg = context.Message;
         return TimelineAppend.Append(db, null, "anomaly.detected", msg.ServiceName, msg.Environment,
             $"Anomaly detected — {msg.Summary} (rule: {msg.RuleName})", msg.CorrelationId, null,
-            msg.DetectedAt, context.CancellationToken);
+            msg.DetectedAt, msg, context.CancellationToken);
     }
 }
 
@@ -65,7 +66,7 @@ public sealed class ErrorSignalConsumer(TimelineDbContext db) : IConsumer<ErrorS
     {
         var msg = context.Message;
         return TimelineAppend.Append(db, null, "signal.error", msg.ServiceName, msg.Environment,
-            $"Error: {msg.Message}", msg.CorrelationId, null, msg.OccurredAt, context.CancellationToken);
+            $"Error: {msg.Message}", msg.CorrelationId, null, msg.OccurredAt, msg, context.CancellationToken);
     }
 }
 
@@ -76,12 +77,14 @@ public sealed class CorrelationFoundConsumer(TimelineDbContext db) : IConsumer<C
         var msg = context.Message;
         return TimelineAppend.Append(db, null, "correlation.found", "platform", msg.Environment,
             $"Correlation [{msg.CorrelationType}] — {msg.IncidentIds.Count} incidents grouped (key: {msg.CorrelationKey})",
-            msg.CorrelationId, null, msg.DetectedAt, context.CancellationToken);
+            msg.CorrelationId, null, msg.DetectedAt, msg, context.CancellationToken);
     }
 }
 
 file static class TimelineAppend
 {
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+
     internal static async Task Append(
         TimelineDbContext db,
         Guid? incidentId,
@@ -92,6 +95,7 @@ file static class TimelineAppend
         string correlationId,
         string? actor,
         DateTimeOffset occurredAt,
+        object message,
         CancellationToken ct)
     {
         db.Entries.Add(new TimelineEntryEntity
@@ -104,7 +108,8 @@ file static class TimelineAppend
             Summary = summary,
             CorrelationId = correlationId,
             Actor = actor,
-            OccurredAt = occurredAt
+            OccurredAt = occurredAt,
+            Payload = JsonSerializer.Serialize(message, message.GetType(), Web)
         });
         await db.SaveChangesAsync(ct);
     }
