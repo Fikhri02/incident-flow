@@ -1,3 +1,5 @@
+> This document describes the retired single-process prototype. For what runs today see the README and docs/adr.
+
 # IncidentFlow Diagrams
 
 ## System Context

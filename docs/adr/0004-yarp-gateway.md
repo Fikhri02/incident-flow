@@ -1,15 +1,16 @@
 # 0004. A YARP reverse proxy as the single HTTP entry
 
 - Status: Accepted
-- Date: chosen 2026-04-28 (master plan); built 2026-05-17 (`af0bdff`, `c9efc11`); recorded 2026-11-23
+- Date: chosen 2026-04-28 (master plan); built 2026-05-17 (`af0bdff`, `c9efc11`); recorded 2026-11-23;
+  reports route added and prototype routes removed 2026-11-23
 - Deciders: Irfan
 
 ## Context and problem statement
 
-Clients need one address for the signal, incident and timeline APIs, and a single place for edge concerns:
-the correlation id and access control. The master plan named "Gateway: YARP reverse proxy". On 2026-05-17
-the prototype's `HttpListener` gateway was replaced with an ASP.NET Core host, and as each service was split
-out its routes moved from in-gateway handlers to YARP proxying.
+Clients need one address for the signal, incident, timeline and reporting APIs, and a single place for edge
+concerns: the correlation id and access control. The master plan named "Gateway: YARP reverse proxy". On
+2026-05-17 the prototype's `HttpListener` gateway was replaced with an ASP.NET Core host, and as each service
+was split out its routes moved from in-gateway handlers to YARP proxying.
 
 Why YARP was chosen over another gateway (a separate proxy such as nginx or Envoy, or another .NET gateway
 library) was not recorded.
@@ -20,11 +21,16 @@ No alternatives were recorded when this was chosen.
 
 ## Decision outcome
 
-`src/IncidentFlow.ApiGateway` hosts YARP 2.2.0 with three routes, configured in code and loaded in memory:
+`src/IncidentFlow.ApiGateway` hosts YARP 2.2.0 with four routes, configured in code and loaded in memory:
 
 - `/api/v1/signals/{**remainder}` to Ingestion, `/api/v1/incidents/{**remainder}` to Incident,
-  `/api/v1/timeline/{**remainder}` to Timeline (`Program.cs:37-57`).
-- Destinations come from the `services:<name>` configuration that Aspire injects (`Program.cs:22-35`).
+  `/api/v1/timeline/{**remainder}` to Timeline, `/api/v1/reports/{**catch-all}` to Reporting
+  (`Program.cs:40-66`).
+- Destinations come from the `services:<name>` configuration that Aspire injects (`Program.cs:20-38`).
+- The gateway answers nothing itself except `/` (a description of the workflow) and the health endpoints.
+  It used to host the `IncidentFlow.Core` prototype in process and serve 14 routes from it (reports, the
+  outbox and inbox views, notification retry, readiness), which read in-memory stores the services never
+  fed. Reports moved to the Reporting service; the rest, and the prototype, were removed (2026-11-23).
 - Gateway middleware: a correlation-id middleware and an API-key guard (`x-api-key` checked against
   `INCIDENTFLOW_API_KEY`). The key stands in for the Identity service, which is deferred until the core
   workflow is stable (master plan, Identity And Access overview).
@@ -37,8 +43,6 @@ No alternatives were recorded when this was chosen.
 - Good, because the gateway is an ordinary ASP.NET Core app: its middleware is C#, and it gets the same
   ServiceDefaults (OpenTelemetry, health endpoints) as the services.
 - Good, because routes live in code next to the destinations Aspire provides, with no separate proxy config.
-- Bad, because the gateway still serves 14 routes from the `IncidentFlow.Core` prototype (reports, outbox and
-  inbox views, readiness), which read in-memory stores the services never feed.
 - Bad, because the services' own endpoints are reachable directly and have no authentication, so a direct call
   skips the API key. The key is read from an environment variable and compared as a plain string; with it
   unset, everything is open.
@@ -56,5 +60,10 @@ No alternatives were recorded when this was chosen.
   `WebApplicationFactory` and proxies `/api/v1/incidents/...` to a stub service on a real port. It checks that a
   generated id and a client's id are both forwarded and returned once, and that the gateway's own routes return
   an id.
+- `tests/IncidentFlow.IntegrationTests/Gateway/GatewayReportingRoutesTests.cs` proxies every
+  `/api/v1/reports/*` route (summary, mtta, mttr, severity-breakdown, top-failing-services,
+  service-reliability, deployment-regressions, and `POST rebuild`) to a stub Reporting service with its query
+  string intact, checks that each retired prototype route now answers 404, and that `/` no longer lists
+  postmortems or recommendations.
 - Not covered: the signals and timeline routes, and the API-key guard. This is a gap.
 - The proxied services are tested directly (`tests/IncidentFlow.IntegrationTests`), not through the gateway.

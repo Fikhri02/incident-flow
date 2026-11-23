@@ -1,3 +1,5 @@
+> This document describes the retired single-process prototype. For what runs today see the README and docs/adr.
+
 # Event Contracts
 
 IncidentFlow integration events are immutable versioned contracts. All events use `schemaVersion: 1` in the local profile.

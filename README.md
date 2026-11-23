@@ -2,7 +2,8 @@
 
 An event-driven incident response platform built on .NET 8 and .NET Aspire. It turns raw production
 signals — errors, logs, metrics, deployments, health checks — into detected anomalies, correlated
-failure groups, incidents with a lifecycle, notifications, and an append-only timeline.
+failure groups, incidents with a lifecycle, notifications, an append-only timeline, and incident
+reports (MTTA, MTTR, severity, failing services, deployment regressions).
 
 The system is a set of independently deployable services communicating over RabbitMQ, with
 per-service PostgreSQL databases, Redis for time-windowed detection state, a YARP gateway at the
@@ -17,6 +18,7 @@ flowchart LR
     gw -->|/api/v1/signals| ing[Ingestion.Api]
     gw -->|/api/v1/incidents| inc[Incident.Api]
     gw -->|/api/v1/timeline| tl[Timeline.Api]
+    gw -->|/api/v1/reports| rep[Reporting.Api]
 
     ing -->|ErrorSignalReceived| det[Detection.Worker]
     det -->|AnomalyDetected| inc
@@ -24,16 +26,21 @@ flowchart LR
     inc -->|IncidentCreated| notif[Notification.Worker]
     inc -->|lifecycle events| tl
     corr -->|CorrelationFound| tl
+    inc -->|lifecycle events| rep
+    corr -->|CorrelationFound| rep
+    rep -.->|rebuild: stored events| tl
 
     ing --- ingdb[(ingestion-db)]
     inc --- incdb[(incident-db)]
     tl --- tldb[(timeline-db)]
+    rep --- repdb[(reporting-db)]
     det --- redis[(Redis)]
     corr --- redis
 ```
 
-All inter-service communication is asynchronous via MassTransit over RabbitMQ. No service calls
-another over HTTP; the only synchronous hop is the gateway proxying client requests inward.
+All inter-service communication is asynchronous via MassTransit over RabbitMQ, with one exception:
+a report rebuild, on request, reads Timeline's stored events over HTTP. Otherwise the only synchronous
+hop is the gateway proxying client requests inward.
 
 ### Services
 
@@ -46,6 +53,7 @@ another over HTTP; the only synchronous hop is the gateway proxying client reque
 | `src/Services/…Incident.Api` | Incident aggregate, dedupe, lifecycle endpoints, lifecycle events | `incident-db` |
 | `src/Services/…Notification.Worker` | Consumes `IncidentCreated`, dispatches notifications | — |
 | `src/Services/…Timeline.Api` | Append-only event log across the whole workflow | `timeline-db` |
+| `src/Services/…Reporting.Api` | Incident read model from lifecycle and correlation events; report endpoints | `reporting-db` |
 | `src/IncidentFlow.BuildingBlocks` | Shared integration event contracts and `IEventBus` | — |
 | `src/IncidentFlow.ServiceDefaults` | OpenTelemetry, health endpoints, HTTP resilience, service discovery | — |
 | `src/IncidentFlow.AppHost` | Aspire orchestration of all services and backing containers | — |
@@ -91,6 +99,7 @@ dotnet tool restore
 dotnet ef database update --project src/Services/IncidentFlow.Services.Ingestion.Api
 dotnet ef database update --project src/Services/IncidentFlow.Services.Incident.Api
 dotnet ef database update --project src/Services/IncidentFlow.Services.Timeline.Api
+dotnet ef database update --project src/Services/IncidentFlow.Services.Reporting.Api
 ```
 
 ### Tests
@@ -100,23 +109,22 @@ dotnet test tests/IncidentFlow.UnitTests
 dotnet test tests/IncidentFlow.IntegrationTests   # requires Docker
 dotnet test tests/IncidentFlow.Specs              # requires Docker (Redis)
 dotnet test tests/IncidentFlow.Contracts.Tests
-dotnet run  --project tests/IncidentFlow.SmokeTests
-dotnet run  --project tests/IncidentFlow.ContractTests
 ```
 
 - `UnitTests`: the Incident aggregate, the Slack notifier, messaging defaults and tracing setup.
 - `IntegrationTests` (xUnit, Testcontainers, FluentAssertions): the services against real PostgreSQL and
   Redis through `WebApplicationFactory` and the MassTransit test harness, including the outbox, inbox,
   duplicate-incident and Slack dedupe behaviour, the migration over existing duplicates, worker health
-  endpoints, rate limiting, and the gateway's correlation id (through YARP to a stub service).
+  endpoints, rate limiting, and the gateway (through YARP to stub services): the correlation id, every
+  `/api/v1/reports/*` route reaching Reporting, and the retired prototype routes answering 404.
 - `Specs` (Reqnroll): plain-language scenarios for the incident lifecycle, the detection threshold and the
   per-source rate limit.
 - `Contracts.Tests`: pins the JSON shape of every integration event, so a renamed or removed field fails.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request: it installs the Aspire
 workload, builds the solution in Release, runs `dotnet test` on the solution (UnitTests, IntegrationTests,
-Specs, Contracts.Tests; results uploaded as .trx files), then runs SmokeTests and ContractTests with
-`dotnet run`. The SDK comes from `global.json` (8.0.400 or a later 8.0 feature band).
+Specs, Contracts.Tests; results uploaded as .trx files). The SDK comes from `global.json` (8.0.400 or a
+later 8.0 feature band).
 Design decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 
 ## API
@@ -159,7 +167,36 @@ moment from opening two incidents; the one that loses is treated as already open
 ```http
 GET /api/v1/timeline/incidents/{incidentId}
 GET /api/v1/timeline/correlation/{correlationId}
+GET /api/v1/timeline/events?after={cursor}&take={n}
 ```
+
+`/events` pages through every stored event in order (event type, payload JSON, recorded time, and the
+cursor for the next page); Reporting's rebuild replays it. `take` defaults to 100 and is capped at 500;
+pass the returned `nextCursor` as `after` for the next page, and an empty page means the end. A negative
+`after` or a `take` below 1 returns 400.
+
+**Reporting** — `Reporting.Api`
+
+```http
+GET  /api/v1/reports/summary
+GET  /api/v1/reports/mtta
+GET  /api/v1/reports/mttr
+GET  /api/v1/reports/severity-breakdown
+GET  /api/v1/reports/top-failing-services
+GET  /api/v1/reports/service-reliability
+GET  /api/v1/reports/deployment-regressions
+POST /api/v1/reports/rebuild[?clean=true]
+```
+
+Every report takes optional `serviceName` and `environment` filters. The figures come from Reporting's
+own read model, one row per incident built from `IncidentCreated`, `IncidentAcknowledged`,
+`IncidentResolved` and `IncidentClosed`; incidents named by a deployment `CorrelationFound` count as
+deployment regressions. MTTA and MTTR are mean minutes from detection to acknowledgement and to
+resolution. `rebuild` replays the events Timeline has stored through the same projection, committing a page
+at a time, and returns the summary. By default it deletes nothing, so incidents Reporting has consumed but
+Timeline has not stored yet are kept; `clean=true` empties the read model first and should only be run once
+Timeline has caught up (figures are partial while it runs). A second rebuild while one is running returns 409.
+See ADR 0008.
 
 **Operational** — every service, the three workers included, exposes `/health/live` and
 `/health/ready` via ServiceDefaults. Traces include MassTransit's publish and consume spans, so a
@@ -191,25 +228,17 @@ Delivery:
 
 ## Project status
 
-The distributed system described above is implemented and builds clean. Some surface still comes
-from `IncidentFlow.Core`, the original single-process prototype the project started as, which the
-gateway hosts in memory alongside the proxy:
+The services above are the whole system: the gateway serves no routes of its own beyond `/` and the
+health endpoints, and proxies everything else. The single-process prototype the project started as
+(`IncidentFlow.Core`, with its console smoke and contract runners) has been retired and removed.
 
-```http
-GET  /api/v1/reports/*          # summary, mtta, mttr, severity, top-failing, regressions
-GET  /api/v1/events{,/outbox,/inbox}
-POST /api/v1/notifications/retry-failed
-GET  /api/v1/runtime/readiness
-```
+Not built yet:
 
-These read the prototype's in-memory stores, which the extracted services no longer feed — the
-reporting and postmortem capabilities have not been migrated onto the service databases yet.
-Ingestion of traces and user reports, and the assign / escalate / reopen lifecycle commands, exist
-in the prototype but not yet in `Incident.Api`. Reporting projections, recommendations, and
-postmortems are the next migration step; identity and an operator UI come after.
-
-`SmokeTests` and `ContractTests` exercise the prototype engine; `IntegrationTests` covers the
-services.
+- Postmortems.
+- Recommendations.
+- Ingestion of traces and user reports.
+- The assign, escalate and reopen lifecycle commands (`Incident.Api` has acknowledge, resolve and close).
+- Identity (the gateway's API key stands in for it) and an operator UI.
 
 ## Documentation
 
@@ -224,7 +253,9 @@ services.
 | `docs/demos/payment-regression.md` | Demo walkthrough |
 | `docs/diagrams/incidentflow-diagrams.md` | System, container, event, and sequence diagrams |
 
-> Parts of `docs/` predate the microservices split and still describe the single-process prototype.
+> Parts of `docs/` predate the microservices split and still describe the retired single-process
+> prototype: `docs/api/http-api.md` lists its routes (postmortems, recommendations, events, readiness), and
+> the demo walkthrough runs the removed smoke runner. This README and `docs/adr/` describe what runs.
 
 ## Stack
 

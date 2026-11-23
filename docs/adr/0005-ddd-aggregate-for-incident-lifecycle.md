@@ -58,7 +58,8 @@ In `src/Services/IncidentFlow.Services.Incident.Api/Domain/`:
 - Bad, because the pattern is used only here. Ingestion and Timeline use plain entities; whether that was a
   choice was not recorded.
 - Neutral: close is allowed straight from open. The product intent of that shortcut is unconfirmed (UAT case
-  INC-09). Assign, escalate and reopen exist only in the `IncidentFlow.Core` prototype.
+  INC-09). Assign, escalate and reopen are not built; they existed only in the `IncidentFlow.Core` prototype,
+  which has been removed.
 
 ### How it is checked
 

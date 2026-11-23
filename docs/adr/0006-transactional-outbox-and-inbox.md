@@ -15,7 +15,7 @@ one key under concurrency.
 
 The master plan set the rules on day one: "Any service that saves state and publishes an event must use
 outbox" and "Every message consumer must be idempotent". Until now the outbox and inbox existed only as
-simulated lists in the `IncidentFlow.Core` prototype.
+simulated lists in the `IncidentFlow.Core` prototype (since removed).
 
 ## Considered options
 
@@ -30,10 +30,12 @@ Recorded in the hardening design (2026-11-23):
 - Transactional outbox (MassTransit `AddEntityFrameworkOutbox` with the bus outbox) where a service saves and
   publishes: Ingestion API, Incident API and its anomaly consumer. The event row is written in the same
   transaction as the state change and delivered afterwards.
-- Consumer inbox (MassTransit EF Core) where a consumer writes to its own database: Incident and Timeline. A
+- Consumer inbox (MassTransit EF Core) where a consumer writes to its own database: Incident, Timeline and Reporting. A
   redelivered message with the same MessageId is skipped while its inbox row is kept: MassTransit's default
-  `DuplicateDetectionWindow` of 30 minutes, which neither service overrides (`IncidentMessaging.cs`,
-  `TimelineMessaging.cs`).
+  `DuplicateDetectionWindow` of 30 minutes, which no service overrides (`IncidentMessaging.cs`,
+  `TimelineMessaging.cs`, `ReportingMessaging.cs`). Reporting runs its inbox at READ COMMITTED and writes
+  each event as one `INSERT … ON CONFLICT DO UPDATE`, because events for one incident arrive on different
+  queues at once and must apply in any order (ADR 0008).
 - Workers without a database (Detection, Correlation) use MassTransit's in-memory outbox, so they publish only
   after the consume succeeds.
 - Notification dedupes by MessageId in Redis with a two-state marker (`SentNotifications.cs`): SET NX

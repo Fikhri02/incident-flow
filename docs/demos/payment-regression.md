@@ -1,14 +1,14 @@
+> This document describes the retired single-process prototype. For what runs today see the README and docs/adr.
+
 # Payment Regression Demo
 
 This demo proves the main IncidentFlow workflow with no external dependencies.
 
-## Run With Smoke Runner
+## What the prototype's smoke runner covered
 
-```bash
-dotnet run --project tests/IncidentFlow.SmokeTests
-```
-
-The runner covers:
+The smoke runner (`tests/IncidentFlow.SmokeTests`) was deleted with the prototype. To run the services today,
+start the Aspire AppHost (`dotnet run --project src/IncidentFlow.AppHost`) and use the suites listed in the
+README (`dotnet test IncidentFlow.sln`). The runner covered:
 
 - deployment signal
 - error spike

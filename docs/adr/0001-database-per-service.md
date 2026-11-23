@@ -6,7 +6,8 @@
 
 ## Context and problem statement
 
-Three services keep state: Ingestion (signals), Incident (incidents) and Timeline (timeline entries).
+Four services keep state: Ingestion (signals), Incident (incidents), Timeline (timeline entries) and Reporting
+(an incident read model, added 2026-11-23 — see ADR 0008).
 The question was whether they share one database or each own one.
 
 The master plan set two rules from the start: "Keep service databases separate from day one, even if all run
@@ -21,9 +22,9 @@ No alternatives were recorded when this was chosen.
 
 Each stateful service owns one PostgreSQL database, and no service reads another's.
 
-- The Aspire AppHost starts one PostgreSQL server with three databases, `ingestion-db`, `incident-db` and
-  `timeline-db` (`src/IncidentFlow.AppHost/Program.cs:12-14`). Each API is given only its own
-  (`Program.cs:16-34`).
+- The Aspire AppHost starts one PostgreSQL server with four databases, `ingestion-db`, `incident-db`,
+  `timeline-db` and `reporting-db` (`src/IncidentFlow.AppHost/Program.cs:12-15`). Each API is given only its own
+  (`Program.cs:17-42`).
 - Each service owns its EF Core model and migrations, applies them at startup, and ships an
   `IDesignTimeDbContextFactory` so `dotnet-ef` works without the Aspire host (README, Timeline 2026-05-18).
 - The workers (Detection, Correlation, Notification) have no database. Data moves between services only as
@@ -40,14 +41,14 @@ Each stateful service owns one PostgreSQL database, and no service reads another
   the correlation id instead.
 - Bad, because a service that saves and then publishes does so in two steps. Until the outbox lands (ADR 0006)
   a crash between the two loses the event.
-- Bad, because locally all three databases share one server, so it is separation of ownership, not of failure:
-  the server going down takes all three with it.
+- Bad, because locally all four databases share one server, so it is separation of ownership, not of failure:
+  the server going down takes all four with it.
 - Bad, because the local PostgreSQL container has no data volume, so local data is lost when the container
   is recreated.
 - Bad, because migrations run at application startup. With several instances of one service starting together,
   that would need a lock or a separate migration step.
-- Neutral: the original plan named seven databases (`docs/architecture/service-boundaries.md`); three exist
-  because only three services keep state today.
+- Neutral: the original plan named seven databases (`docs/architecture/service-boundaries.md`); four exist
+  because only four services keep state today.
 
 ### How it is checked
 

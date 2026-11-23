@@ -1,3 +1,5 @@
+> This document describes the retired single-process prototype. For what runs today see the README and docs/adr.
+
 # IncidentFlow Architecture Overview
 
 IncidentFlow turns production signals into a managed incident response workflow.

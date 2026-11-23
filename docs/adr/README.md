@@ -9,13 +9,14 @@ than supplying one after the fact.
 
 | ADR | Decision | Status |
 |---|---|---|
-| [0001](0001-database-per-service.md) | One database per service (three PostgreSQL databases in one local server) | Accepted |
+| [0001](0001-database-per-service.md) | One database per service (four PostgreSQL databases in one local server) | Accepted |
 | [0002](0002-rabbitmq-via-masstransit.md) | RabbitMQ through MassTransit, one queue per service and consumer, retry before `_error` | Accepted |
 | [0003](0003-redis-for-transient-windows-only.md) | Redis only for transient time windows, never as a source of truth | Accepted |
 | [0004](0004-yarp-gateway.md) | A YARP reverse proxy as the single HTTP entry | Accepted |
 | [0005](0005-ddd-aggregate-for-incident-lifecycle.md) | The incident lifecycle lives in a DDD aggregate | Accepted |
 | [0006](0006-transactional-outbox-and-inbox.md) | Transactional outbox and inbox through MassTransit's EF Core support | Accepted |
 | [0007](0007-slack-through-standard-resilience-handler.md) | Slack is called through the standard HTTP resilience handler | Accepted |
+| [0008](0008-reporting-as-a-projection-of-the-timeline.md) | Reporting is a rebuildable projection of the Timeline event log | Accepted |
 
 ## Adding a record
 

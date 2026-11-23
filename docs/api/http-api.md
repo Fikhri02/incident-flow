@@ -1,3 +1,5 @@
+> This document describes the retired single-process prototype. For what runs today see the README and docs/adr.
+
 # HTTP API
 
 Base URL for the local profile: `http://localhost:5089`.

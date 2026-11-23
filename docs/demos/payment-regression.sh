@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Written for the retired single-process prototype; see docs/demos/payment-regression.md.
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:5089}"
