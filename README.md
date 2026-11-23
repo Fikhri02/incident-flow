@@ -174,7 +174,8 @@ POST /api/v1/incidents/{id}/close
 Incoming anomalies are deduplicated against currently open incidents by service, environment, and
 fingerprint, so a sustained fault produces one incident rather than a stream of them. A partial unique
 index on that key (while the incident is open or acknowledged) keeps two anomalies arriving at the same
-moment from opening two incidents; the one that loses is treated as already open.
+moment from opening two incidents; the one that loses is treated as already open. Anomalies for one key are
+also consumed one at a time, so in a single instance the later ones find the open incident before saving.
 
 **Timeline** — `Timeline.Api`
 

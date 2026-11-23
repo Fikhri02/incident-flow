@@ -11,6 +11,7 @@ using MassTransit;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace IncidentFlow.IntegrationTests.Incidents;
@@ -44,11 +45,32 @@ public sealed class IncidentMessagingTests(PostgresFixture postgres) : IClassFix
         public Task Consume(ConsumeContext<IncidentCreated> context) => Task.CompletedTask;
     }
 
-    private async Task<ServiceProvider> StartAsync(bool racing = false)
+    /// <summary>Keeps every Error logged under a category prefix, so a test can assert nothing was.</summary>
+    private sealed class ErrorLog(string categoryPrefix) : ILoggerProvider
+    {
+        public readonly System.Collections.Concurrent.ConcurrentQueue<string> Errors = new();
+        private readonly string _prefix = categoryPrefix;
+        public ILogger CreateLogger(string categoryName) => new Sink(this, categoryName);
+        public void Dispose() { }
+
+        private sealed class Sink(ErrorLog owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                if (logLevel >= LogLevel.Error && category.StartsWith(owner._prefix, StringComparison.Ordinal))
+                    owner.Errors.Enqueue($"{category}: {formatter(state, exception)}");
+            }
+        }
+    }
+
+    private async Task<ServiceProvider> StartAsync(bool racing = false, ILoggerProvider? logs = null)
     {
         var database = postgres.NewDatabase();
         var services = new ServiceCollection()
-            .AddLogging()
+            .AddLogging(b => { if (logs is not null) b.AddProvider(logs); })
             .AddDbContext<IncidentDbContext>(o => o.UseNpgsql(database, n => n.EnableRetryOnFailure()))
             .AddSingleton(TimeProvider.System)
             .AddScoped<IEventBus, MassTransitEventBus>()
@@ -153,6 +175,25 @@ public sealed class IncidentMessagingTests(PostgresFixture postgres) : IClassFix
         harness.Consumed.Select<IncidentCreated>().Count(m => m.Context.Message.ServiceName == service)
             .Should().Be(1);
         harness.Published.Select<Fault<AnomalyDetected>>().Should().BeEmpty();
+    }
+
+    // A burst of anomalies for one key, delivered at once. Each used to pass the active-incident check,
+    // so all but one hit the unique index: handled, but EF logged every rejected insert as an Error.
+    // Consumed one key at a time, the later ones find the open incident and stop before saving.
+    [Fact]
+    public async Task ConcurrentAnomaliesForOneKey_AreConsumedInTurn_SoNoSaveHitsTheUniqueIndex()
+    {
+        var efErrors = new ErrorLog("Microsoft.EntityFrameworkCore");
+        await using var provider = await StartAsync(logs: efErrors);
+        var harness = provider.GetRequiredService<ITestHarness>();
+        var service = $"svc-{Guid.NewGuid():N}";
+
+        await Task.WhenAll(Enumerable.Range(0, 10).Select(_ => harness.Bus.Publish(Anomaly(service, Guid.NewGuid().ToString("N")))));
+        await harness.InactivityTask;
+
+        (await IncidentsFor(provider, service)).Should().ContainSingle();
+        harness.Consumed.Select<IncidentCreated>().Count(m => m.Context.Message.ServiceName == service).Should().Be(1);
+        efErrors.Errors.Should().BeEmpty("a duplicate anomaly is expected and must not be logged as a database error");
     }
 
     [Fact]

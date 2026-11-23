@@ -43,9 +43,12 @@ Redis holds only windows that can be lost without losing data:
 - Good, because a worker restart keeps the window, and several worker instances share one window.
 - Good, because Redis can be flushed or lost at any time: the cost is the windows in progress, not data.
 - Good, because the signal id is the sorted-set member, so a redelivered signal does not count twice.
-- Bad, because the window update is separate commands (add, expire, trim, count), not one atomic step. Concurrent signals for the
-  same key can raise the anomaly twice (Signal Intelligence review, 2026-11-19). A Lua script or a
-  transaction would fix it.
+- Good, because Detection's window update is one Lua script (add, expire, trim, count, and clear at the threshold), so Redis
+  runs it as a single step and each five signals raise one anomaly however they are consumed. Until 2026-11-23
+  it was separate commands; signals consumed at the same moment each counted five, and the AppHost run that day
+  raised five anomalies from one burst of five (first noted in the Signal Intelligence review, 2026-11-19).
+- Bad, because Correlation's window update is still separate commands, so concurrent incidents for one key can
+  each see the group (see its republishing in the limits).
 - Before the hardening work (at `db92cf7`) the window keys had no TTL: an idle key stayed until the next write
   trimmed it. Now every write sets a TTL of the window plus one minute (`SpikeDetector.KeyTtl`,
   `CorrelationEngine.KeyTtl`). Correlation keys are still not deleted when they fire; they expire.
@@ -66,6 +69,8 @@ Redis holds only windows that can be lost without losing data:
   `Correlation/CorrelationEngineTests.cs` run the real window code against a Testcontainers Redis.
 - `tests/IncidentFlow.Specs/Features/DetectionThreshold.feature` states the threshold in plain language and
   runs it against a real Redis.
+- One anomaly per five signals under concurrency: `Detection/SpikeDetectorTests.ConcurrentBurstOfFive_RaisesExactlyOneSpike`
+  and `ConcurrentBurstOfTen_RaisesTwoSpikes`.
 - Window TTLs: `Detection/SpikeDetectorTests.WindowKey_ExpiresShortlyAfterTheWindow` and
   `Correlation/CorrelationEngineTests.WindowKeys_ExpireShortlyAfterTheWindow`.
 - Notification markers: `Notifications/NotificationDedupeTests` (against a Testcontainers Redis), including

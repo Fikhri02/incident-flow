@@ -99,4 +99,32 @@ public sealed class SpikeDetectorTests : IAsyncLifetime
         ttl.Should().NotBeNull("an idle window must not stay in Redis forever");
         ttl!.Value.Should().BeGreaterThan(TimeSpan.FromMinutes(5)).And.BeLessThanOrEqualTo(TimeSpan.FromMinutes(6));
     }
+
+    // Five signals of one burst arrive together, as they do when Detection consumes concurrently. Each
+    // used to add itself, count five and delete the window, so the burst raised up to five anomalies.
+    [Fact]
+    public async Task ConcurrentBurstOfFive_RaisesExactlyOneSpike()
+    {
+        for (var round = 0; round < 20; round++)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var results = await Task.WhenAll(Enumerable.Range(0, 5).Select(i =>
+                _detector.RecordAsync("svc", "prod", $"fp-burst-{round}", now.AddMilliseconds(i), Guid.NewGuid())));
+
+            results.Count(r => r.IsSpike).Should().Be(1, $"round {round}: one burst of five is one anomaly");
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentBurstOfTen_RaisesTwoSpikes()
+    {
+        for (var round = 0; round < 10; round++)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var results = await Task.WhenAll(Enumerable.Range(0, 10).Select(i =>
+                _detector.RecordAsync("svc", "prod", $"fp-ten-{round}", now.AddMilliseconds(i), Guid.NewGuid())));
+
+            results.Count(r => r.IsSpike).Should().Be(2, $"round {round}: every five in the window is one anomaly");
+        }
+    }
 }

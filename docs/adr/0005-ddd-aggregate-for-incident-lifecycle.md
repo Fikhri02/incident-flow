@@ -32,6 +32,11 @@ In `src/Services/IncidentFlow.Services.Incident.Api/Domain/`:
   over the key where the status is open or acknowledged, with nulls not distinct (`Data/IncidentDbContext.cs`).
   The anomaly consumer still looks for an active incident first; a save that loses the race raises
   `ActiveIncidentExistsException`, which the consumer treats as already handled.
+- Anomalies for one key are consumed one at a time (a MassTransit partitioner keyed by the incident key,
+  outside the consumer outbox, in `Messaging/IncidentMessaging.cs`), so a later anomaly finds the incident the
+  first one committed and stops before saving. The unique index stays as the backstop for several Incident
+  instances. Before 2026-11-23 every anomaly of a burst reached the insert, and EF Core logged each refused
+  insert as an Error although the consumer handled it.
 - The aggregate records domain events (`Domain/Events/IncidentDomainEvents.cs`). The service dequeues them and
   `Messaging/IncidentEventPublisher.cs` maps them to the shared integration contracts and publishes them through
   MassTransit's EF Core outbox, so the event rows are committed in the same transaction as the aggregate and
@@ -70,6 +75,7 @@ In `src/Services/IncidentFlow.Services.Incident.Api/Domain/`:
 - `tests/IncidentFlow.Specs/Features/IncidentLifecycle.feature`: the lifecycle and the refused moves in plain
   language, against the aggregate.
 - One active incident per key: `tests/IncidentFlow.IntegrationTests/Incidents/IncidentMessagingTests`
-  (`TwoSavesForTheSameKey_LeaveOneActiveIncident`, `ConcurrentAnomalies_OpenOneIncident_AndTheLoserIsNotAFault`)
+  (`TwoSavesForTheSameKey_LeaveOneActiveIncident`, `ConcurrentAnomalies_OpenOneIncident_AndTheLoserIsNotAFault`,
+  `ConcurrentAnomaliesForOneKey_AreConsumedInTurn_SoNoSaveHitsTheUniqueIndex`)
   and `Incidents/ActiveIncidentIndexMigrationTests.Migrating_ADatabaseWithDuplicateActiveIncidents_KeepsTheEarliestActive_AndClosesTheRest`.
 - Events through the outbox: `Incidents/IncidentOutboxTests.Acknowledge_WritesTheEventToTheOutbox_WithTheIncident`.
