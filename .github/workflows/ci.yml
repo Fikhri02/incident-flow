@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # The AppHost uses .NET Aspire 8, which ships as an SDK workload.
+      - name: Install the Aspire workload
+        run: dotnet workload install aspire
+
+      - name: Restore
+        run: dotnet restore IncidentFlow.sln
+
+      - name: Build
+        run: dotnet build IncidentFlow.sln --no-restore -c Release
+
+      # Integration tests start PostgreSQL and Redis with Testcontainers; the runner has Docker.
+      # LogFilePrefix gives each test project its own .trx file instead of overwriting one name.
+      - name: Test
+        run: dotnet test IncidentFlow.sln --no-build -c Release --logger "trx;LogFilePrefix=results" --results-directory TestResults
+
+      # Console checks of the prototype engine: they exit non-zero when an assertion fails.
+      - name: Smoke tests
+        run: dotnet run --project tests/IncidentFlow.SmokeTests -c Release --no-build
+
+      - name: Contract tests (prototype)
+        run: dotnet run --project tests/IncidentFlow.ContractTests -c Release --no-build
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
