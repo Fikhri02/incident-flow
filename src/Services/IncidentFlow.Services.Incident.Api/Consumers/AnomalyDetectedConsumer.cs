@@ -29,7 +29,20 @@ public sealed class AnomalyDetectedConsumer(
             msg.DetectedAt, msg.CorrelationId, msg.SignalIds), clock.GetUtcNow());
 
         incidents.Add(incident);
-        await incidents.SaveChangesAsync(context.CancellationToken);
+        try
+        {
+            await incidents.SaveChangesAsync(context.CancellationToken);
+        }
+        catch (ActiveIncidentExistsException)
+        {
+            // Another anomaly for the same key opened the incident between our check and our save.
+            logger.LogDebug("Suppressed duplicate incident for {Service}/{Env} fingerprint={Fingerprint} (lost the race)",
+                msg.ServiceName, msg.Environment, msg.Fingerprint);
+            return;
+        }
+
+        // Goes to the outbox in the same transaction as the incident and the inbox record;
+        // MassTransit delivers it after that transaction commits.
         await events.PublishAsync(incident, context.CancellationToken);
 
         logger.LogInformation("Incident {IncidentId} created for {Service}/{Env} [{Severity}]",

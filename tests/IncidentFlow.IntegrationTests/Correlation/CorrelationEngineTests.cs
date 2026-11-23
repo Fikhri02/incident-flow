@@ -11,11 +11,13 @@ public sealed class CorrelationEngineTests : IAsyncLifetime
 {
     private readonly RedisContainer _redis = new RedisBuilder().Build();
     private CorrelationEngine _engine = null!;
+    private IConnectionMultiplexer _mux = null!;
 
     public async Task InitializeAsync()
     {
         await _redis.StartAsync();
         var mux = await ConnectionMultiplexer.ConnectAsync(_redis.GetConnectionString());
+        _mux = mux;
         _engine = new CorrelationEngine(mux);
     }
 
@@ -99,4 +101,18 @@ public sealed class CorrelationEngineTests : IAsyncLifetime
             DetectedAt: at ?? DateTimeOffset.UtcNow,
             CorrelationId: Guid.NewGuid().ToString("N")
         );
+
+    [Fact]
+    public async Task WindowKeys_ExpireShortlyAfterTheWindow()
+    {
+        await _engine.RecordAsync(Incident(deploymentId: "d-ttl", fingerprint: "fp-ttl"));
+        var db = _mux.GetDatabase();
+
+        foreach (var key in new[] { "corr:deploy:prod:d-ttl", "corr:fingerprint:prod:fp-ttl" })
+        {
+            var ttl = await db.KeyTimeToLiveAsync(key);
+            ttl.Should().NotBeNull($"{key} must not stay in Redis forever");
+            ttl!.Value.Should().BeGreaterThan(TimeSpan.FromMinutes(10)).And.BeLessThanOrEqualTo(TimeSpan.FromMinutes(11));
+        }
+    }
 }

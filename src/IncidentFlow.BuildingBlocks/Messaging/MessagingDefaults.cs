@@ -26,4 +26,12 @@ public static class MessagingDefaults
     public static void UseDefaultRetry(this IBusFactoryConfigurator cfg) =>
         cfg.UseMessageRetry(r => r.Intervals(
             TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5)));
+
+    /// <summary>
+    /// Sets the envelope CorrelationId of every published contract from its payload CorrelationId.
+    /// Applies to bus publishes, outbox publishes and publishes from inside a consumer.
+    /// Not a scoped filter: the in-memory outbox sends after the consumer's scope is disposed.
+    /// </summary>
+    public static void UsePayloadCorrelationId(this IBusFactoryConfigurator cfg) =>
+        cfg.ConfigurePublish(p => p.ConnectPublishPipeSpecificationObserver(new PayloadCorrelationIdObserver()));
 }

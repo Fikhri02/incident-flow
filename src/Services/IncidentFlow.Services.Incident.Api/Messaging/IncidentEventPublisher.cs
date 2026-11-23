@@ -6,7 +6,8 @@ namespace IncidentFlow.Services.Incident.Api.Messaging;
 
 /// <summary>
 /// Translates the aggregate's domain events into the integration contracts in BuildingBlocks
-/// and publishes them. Call after the aggregate has been saved.
+/// and publishes them through the outbox. The events are written when the DbContext is saved,
+/// in the same transaction as the aggregate.
 /// </summary>
 public sealed class IncidentEventPublisher(IEventBus bus)
 {

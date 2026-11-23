@@ -51,7 +51,10 @@ public static class IncidentEndpoints
                 ChangeAsync(id, incidents, events, i => i.Close(clock.GetUtcNow()), ct));
     }
 
-    /// <summary>Load the aggregate, let it apply the change, save, then publish what it recorded.</summary>
+    /// <summary>
+    /// Load the aggregate and let it apply the change. Its events go to the outbox, which is part of the
+    /// same DbContext, so one SaveChanges commits the incident and its events together.
+    /// </summary>
     private static async Task<IResult> ChangeAsync(
         Guid id,
         IIncidentRepository incidents,
@@ -75,8 +78,8 @@ public static class IncidentEndpoints
             return Results.BadRequest(new { error = ex.Message });
         }
 
-        await incidents.SaveChangesAsync(ct);
         await events.PublishAsync(incident, ct);
+        await incidents.SaveChangesAsync(ct);
         return Results.Ok(IncidentResponse.From(incident));
     }
 }

@@ -1,6 +1,7 @@
 using IncidentFlow.BuildingBlocks.Contracts;
 using IncidentFlow.BuildingBlocks.EventBus;
 using IncidentFlow.Services.Ingestion.Api.Data;
+using IncidentFlow.Services.Ingestion.Api.Middleware;
 using IncidentFlow.Services.Ingestion.Api.Models;
 using IncidentFlow.Services.Ingestion.Api.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -9,8 +10,6 @@ namespace IncidentFlow.Services.Ingestion.Api.Endpoints;
 
 public static class SignalEndpoints
 {
-    private const string CorrelationIdHeader = "x-correlation-id";
-
     public static void MapSignalEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/v1/signals").WithTags("signals");
@@ -110,7 +109,9 @@ public static class SignalEndpoints
         DateTimeOffset? occurredAt, string? idempotencyKey,
         Func<Guid, string, Task> publish)
     {
-        var correlationId = ctx.Request.Headers[CorrelationIdHeader].FirstOrDefault()
+        // Set by CorrelationIdMiddleware; the header (or a new id) only if the middleware did not run.
+        var correlationId = ctx.Items[CorrelationIdMiddleware.Header] as string
+                            ?? ctx.Request.Headers[CorrelationIdMiddleware.Header].FirstOrDefault()
                             ?? Guid.NewGuid().ToString("N");
 
         if (idempotencyKey is not null)
@@ -139,9 +140,10 @@ public static class SignalEndpoints
             ReceivedAt = DateTimeOffset.UtcNow
         };
 
+        // The event goes to the outbox in this DbContext; one SaveChanges commits it with the signal.
         db.Signals.Add(signal);
-        await db.SaveChangesAsync();
         await publish(signal.SignalId, correlationId);
+        await db.SaveChangesAsync();
 
         return new SignalAcceptedResponse(signal.SignalId, correlationId, false, "Signal accepted.");
     }

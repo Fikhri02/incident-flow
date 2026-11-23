@@ -4,7 +4,8 @@ using IncidentFlow.Services.Detection.Worker.Detection;
 using IncidentFlow.BuildingBlocks.Messaging;
 using MassTransit;
 
-var builder = Host.CreateApplicationBuilder(args);
+// A web host only for /health/live and /health/ready; the work is done by the consumers.
+var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 builder.AddRedisClient("redis");
@@ -13,16 +14,19 @@ builder.Services.AddSingleton<SpikeDetector>();
 
 builder.Services.AddMassTransit(x =>
 {
-    x.UseServiceEndpointNames("detection");
-    x.AddConsumer<ErrorSignalConsumer>();
+    x.AddDetectionMessaging();
 
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
         cfg.UseDefaultRetry();
+        cfg.UsePayloadCorrelationId();
         cfg.ConfigureEndpoints(ctx);
     });
 });
 
-var host = builder.Build();
-host.Run();
+var app = builder.Build();
+
+app.MapDefaultEndpoints();
+
+app.Run();

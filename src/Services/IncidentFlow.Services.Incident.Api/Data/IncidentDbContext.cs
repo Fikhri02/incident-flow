@@ -1,10 +1,14 @@
 using IncidentFlow.Services.Incident.Api.Domain;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace IncidentFlow.Services.Incident.Api.Data;
 
 public sealed class IncidentDbContext(DbContextOptions<IncidentDbContext> options) : DbContext(options)
 {
+    /// <summary>Unique over the incident key while the incident is open or acknowledged.</summary>
+    public const string ActiveKeyIndex = "IX_Incidents_ActiveKey";
+
     public DbSet<Domain.Incident> Incidents => Set<Domain.Incident>();
 
     protected override void OnModelCreating(ModelBuilder model)
@@ -34,6 +38,18 @@ public sealed class IncidentDbContext(DbContextOptions<IncidentDbContext> option
             e.Ignore(i => i.DomainEvents);
             e.HasIndex(i => new { i.ServiceName, i.Environment, i.Status });
             e.HasIndex(i => new { i.Fingerprint, i.Status });
+            // One active incident per key (the aggregate's IsActive rule: open or acknowledged).
+            // A null fingerprint is a key value too, so nulls are not distinct.
+            e.HasIndex(i => new { i.ServiceName, i.Environment, i.Fingerprint })
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('open', 'acknowledged')")
+                .AreNullsDistinct(false)
+                .HasDatabaseName(ActiveKeyIndex);
         });
+
+        // MassTransit outbox (events saved with the incident) and inbox (consumed MessageIds).
+        model.AddInboxStateEntity();
+        model.AddOutboxMessageEntity();
+        model.AddOutboxStateEntity();
     }
 }

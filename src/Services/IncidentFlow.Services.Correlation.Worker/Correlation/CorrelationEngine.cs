@@ -8,6 +8,9 @@ public sealed class CorrelationEngine(IConnectionMultiplexer redis)
     private const int Threshold = 2;
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(10);
 
+    /// <summary>A window idle this long holds nothing that still counts, so Redis may drop it.</summary>
+    public static readonly TimeSpan KeyTtl = Window + TimeSpan.FromMinutes(1);
+
     // Returns one CorrelationMatch per correlation type that crossed the threshold.
     public async Task<IReadOnlyList<CorrelationMatch>> RecordAsync(IncidentCreated incident)
     {
@@ -20,6 +23,7 @@ public sealed class CorrelationEngine(IConnectionMultiplexer redis)
         {
             var key = $"corr:deploy:{incident.Environment}:{incident.DeploymentId}";
             await db.SortedSetAddAsync(key, incident.IncidentId.ToString(), scoreNow);
+            await db.KeyExpireAsync(key, KeyTtl);
             await db.SortedSetRemoveRangeByScoreAsync(key, 0, scoreCutoff - 1);
             var members = await db.SortedSetRangeByScoreAsync(key, scoreCutoff, double.PositiveInfinity);
             if (members.Length >= Threshold)
@@ -31,6 +35,7 @@ public sealed class CorrelationEngine(IConnectionMultiplexer redis)
         {
             var key = $"corr:fingerprint:{incident.Environment}:{incident.Fingerprint}";
             await db.SortedSetAddAsync(key, incident.IncidentId.ToString(), scoreNow);
+            await db.KeyExpireAsync(key, KeyTtl);
             await db.SortedSetRemoveRangeByScoreAsync(key, 0, scoreCutoff - 1);
             var members = await db.SortedSetRangeByScoreAsync(key, scoreCutoff, double.PositiveInfinity);
             if (members.Length >= Threshold)

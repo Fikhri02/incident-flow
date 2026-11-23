@@ -14,6 +14,9 @@ public static class Extensions
 {
     public const string CorrelationIdHeader = "x-correlation-id";
 
+    /// <summary>The ActivitySource MassTransit 8 emits from (DiagnosticHeaders.DefaultListenerName).</summary>
+    public const string MassTransitActivitySource = "MassTransit";
+
     public static IHostApplicationBuilder AddServiceDefaults(this IHostApplicationBuilder builder)
     {
         builder.ConfigureOpenTelemetry();
@@ -44,7 +47,9 @@ public static class Extensions
                 .AddRuntimeInstrumentation())
             .WithTracing(tracing => tracing
                 .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation());
+                .AddHttpClientInstrumentation()
+                // MassTransit's send, publish and consume spans, so a RabbitMQ hop shows in the trace.
+                .AddSource(MassTransitActivitySource));
 
         builder.AddOpenTelemetryExporters();
         return builder;

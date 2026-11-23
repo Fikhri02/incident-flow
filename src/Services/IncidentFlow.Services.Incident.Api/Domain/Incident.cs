@@ -121,7 +121,7 @@ public sealed class Incident
         _domainEvents.Add(new IncidentWasClosed(IncidentId, now));
     }
 
-    /// <summary>Hands the recorded events to the caller (to publish after saving) and clears them.</summary>
+    /// <summary>Hands the recorded events to the caller (to publish through the outbox) and clears them.</summary>
     public IReadOnlyList<IIncidentDomainEvent> DequeueDomainEvents()
     {
         var events = _domainEvents.ToList();

@@ -10,5 +10,6 @@ public interface IIncidentRepository
 
     void Add(Incident incident);
 
+    /// <exception cref="ActiveIncidentExistsException">A new incident's key already has an active incident.</exception>
     Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -21,13 +21,13 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddMassTransit(x =>
 {
-    x.UseServiceEndpointNames("incident");
-    x.AddConsumer<AnomalyDetectedConsumer>();
+    x.AddIncidentMessaging();
 
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
         cfg.UseDefaultRetry();
+        cfg.UsePayloadCorrelationId();
         cfg.ConfigureEndpoints(ctx);
     });
 });

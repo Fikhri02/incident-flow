@@ -11,11 +11,16 @@ using IncidentProgram = incidentapi::Program;
 
 namespace IncidentFlow.IntegrationTests.Incidents;
 
-public sealed class IncidentApiFactory : WebApplicationFactory<IncidentProgram>, IAsyncLifetime
+public class IncidentApiFactory : WebApplicationFactory<IncidentProgram>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder().Build();
 
     public RecordingEventBus Bus { get; } = new();
+
+    /// <summary>False keeps the service's own MassTransit event bus (and its outbox) instead of the recorder.</summary>
+    protected virtual bool RecordEvents => true;
+
+    public string ConnectionString => _postgres.GetConnectionString();
 
     public async Task InitializeAsync() => await _postgres.StartAsync();
 
@@ -35,9 +40,12 @@ public sealed class IncidentApiFactory : WebApplicationFactory<IncidentProgram>,
 
         builder.ConfigureServices(services =>
         {
-            var busDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IEventBus));
-            if (busDescriptor is not null) services.Remove(busDescriptor);
-            services.AddSingleton<IEventBus>(Bus);
+            if (RecordEvents)
+            {
+                var busDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IEventBus));
+                if (busDescriptor is not null) services.Remove(busDescriptor);
+                services.AddSingleton<IEventBus>(Bus);
+            }
 
             // Remove MassTransit hosted services so no RabbitMQ connection is attempted
             services.RemoveMassTransitHostedServices();

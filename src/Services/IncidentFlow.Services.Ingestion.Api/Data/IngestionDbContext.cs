@@ -1,4 +1,5 @@
 using IncidentFlow.Services.Ingestion.Api.Models;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace IncidentFlow.Services.Ingestion.Api.Data;
@@ -26,5 +27,10 @@ public sealed class IngestionDbContext(DbContextOptions<IngestionDbContext> opti
             e.HasIndex(s => new { s.ServiceName, s.Environment, s.OccurredAt });
             e.HasIndex(s => s.IdempotencyKey).HasFilter("\"IdempotencyKey\" IS NOT NULL");
         });
+
+        // MassTransit outbox: published events are rows here, committed by the same SaveChanges as the signal.
+        model.AddInboxStateEntity();
+        model.AddOutboxMessageEntity();
+        model.AddOutboxStateEntity();
     }
 }

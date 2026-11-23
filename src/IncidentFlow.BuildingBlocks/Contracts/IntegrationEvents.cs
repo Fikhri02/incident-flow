@@ -1,14 +1,14 @@
 namespace IncidentFlow.BuildingBlocks.Contracts;
 
-public sealed record IntegrationEvent(
-    Guid EventId,
-    string EventType,
-    int SchemaVersion,
-    string CorrelationId,
-    string? CausationId,
-    string Source,
-    DateTimeOffset OccurredAt
-);
+// Every contract travels in MassTransit's envelope (MessageId, CorrelationId, ConversationId, SentTime,
+// MessageType). Each payload also carries the business CorrelationId; the publish filter in
+// Messaging/PayloadCorrelationIdFilter copies it into the envelope's CorrelationId.
+
+/// <summary>A contract that carries the business correlation id of the request that started the flow.</summary>
+public interface ICorrelatedEvent
+{
+    string CorrelationId { get; }
+}
 
 // Signal events — published by Ingestion
 public sealed record ErrorSignalReceived(
@@ -24,7 +24,7 @@ public sealed record ErrorSignalReceived(
     DateTimeOffset OccurredAt,
     string CorrelationId,
     string? IdempotencyKey = null
-);
+) : ICorrelatedEvent;
 
 public sealed record LogSignalReceived(
     Guid SignalId,
@@ -39,7 +39,7 @@ public sealed record LogSignalReceived(
     DateTimeOffset OccurredAt,
     string CorrelationId,
     string? IdempotencyKey = null
-);
+) : ICorrelatedEvent;
 
 public sealed record MetricSignalReceived(
     Guid SignalId,
@@ -52,7 +52,7 @@ public sealed record MetricSignalReceived(
     DateTimeOffset OccurredAt,
     string CorrelationId,
     string? IdempotencyKey = null
-);
+) : ICorrelatedEvent;
 
 public sealed record DeploymentSignalReceived(
     Guid SignalId,
@@ -65,7 +65,7 @@ public sealed record DeploymentSignalReceived(
     DateTimeOffset OccurredAt,
     string CorrelationId,
     string? IdempotencyKey = null
-);
+) : ICorrelatedEvent;
 
 public sealed record HealthCheckSignalReceived(
     Guid SignalId,
@@ -78,7 +78,7 @@ public sealed record HealthCheckSignalReceived(
     DateTimeOffset OccurredAt,
     string CorrelationId,
     string? IdempotencyKey = null
-);
+) : ICorrelatedEvent;
 
 // Incident lifecycle events — published by Incident.Api
 public sealed record IncidentCreated(
@@ -93,7 +93,7 @@ public sealed record IncidentCreated(
     string Summary,
     DateTimeOffset DetectedAt,
     string CorrelationId
-);
+) : ICorrelatedEvent;
 
 public sealed record IncidentAcknowledged(
     Guid IncidentId,
@@ -102,7 +102,7 @@ public sealed record IncidentAcknowledged(
     string AcknowledgedBy,
     DateTimeOffset AcknowledgedAt,
     string CorrelationId
-);
+) : ICorrelatedEvent;
 
 public sealed record IncidentResolved(
     Guid IncidentId,
@@ -111,7 +111,7 @@ public sealed record IncidentResolved(
     string ResolvedBy,
     DateTimeOffset ResolvedAt,
     string CorrelationId
-);
+) : ICorrelatedEvent;
 
 public sealed record IncidentClosed(
     Guid IncidentId,
@@ -119,7 +119,7 @@ public sealed record IncidentClosed(
     string Environment,
     DateTimeOffset ClosedAt,
     string CorrelationId
-);
+) : ICorrelatedEvent;
 
 // Correlation events — published by Correlation.Worker
 public sealed record CorrelationFound(
@@ -132,7 +132,7 @@ public sealed record CorrelationFound(
     IReadOnlyList<Guid> IncidentIds,
     DateTimeOffset DetectedAt,
     string CorrelationId
-);
+) : ICorrelatedEvent;
 
 // Anomaly events — published by Detection
 public sealed record AnomalyDetected(
@@ -148,4 +148,4 @@ public sealed record AnomalyDetected(
     DateTimeOffset DetectedAt,
     IReadOnlyList<Guid> SignalIds,
     string CorrelationId
-);
+) : ICorrelatedEvent;

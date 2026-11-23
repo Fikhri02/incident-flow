@@ -104,12 +104,20 @@ app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
     await ctx.Response.WriteAsJsonAsync(new { error = message });
 }));
 
-// Correlation ID
+// Correlation ID: on the request, so YARP forwards it and the services stamp it on their events;
+// on the response only if absent, since YARP copies the service's echo and the client should see one value.
 app.Use(async (ctx, next) =>
 {
-    var id = ctx.Request.Headers[CorrelationIdHeader].FirstOrDefault() ?? Guid.NewGuid().ToString("N");
+    var id = ctx.Request.Headers[CorrelationIdHeader].FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(id)) id = Guid.NewGuid().ToString("N");
+    ctx.Request.Headers[CorrelationIdHeader] = id;
     ctx.Items[CorrelationIdHeader] = id;
-    ctx.Response.Headers[CorrelationIdHeader] = id;
+    ctx.Response.OnStarting(() =>
+    {
+        if (!ctx.Response.Headers.ContainsKey(CorrelationIdHeader))
+            ctx.Response.Headers[CorrelationIdHeader] = id;
+        return Task.CompletedTask;
+    });
     await next();
 });
 
@@ -187,3 +195,6 @@ app.MapGet("/api/v1/reports/deployment-regressions", (HttpContext ctx, IncidentF
 app.MapGet("/api/v1/runtime/readiness", (IncidentFlowEngine e) => e.GetRuntimeReadiness());
 
 app.Run();
+
+// Lets the integration tests host the gateway (WebApplicationFactory<Program>).
+public partial class Program { }

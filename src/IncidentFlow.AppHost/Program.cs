@@ -34,7 +34,8 @@ var timeline = builder.AddProject<Projects.IncidentFlow_Services_Timeline_Api>("
     .WithReference(rabbit);
 
 builder.AddProject<Projects.IncidentFlow_Services_Notification_Worker>("notification")
-    .WithReference(rabbit);
+    .WithReference(rabbit)
+    .WithReference(redis);
 
 builder.AddProject<Projects.IncidentFlow_ApiGateway>("api-gateway")
     .WithReference(ingestion)

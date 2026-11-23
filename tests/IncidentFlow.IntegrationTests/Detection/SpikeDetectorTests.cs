@@ -10,11 +10,13 @@ public sealed class SpikeDetectorTests : IAsyncLifetime
 {
     private readonly RedisContainer _redis = new RedisBuilder().Build();
     private SpikeDetector _detector = null!;
+    private IConnectionMultiplexer _mux = null!;
 
     public async Task InitializeAsync()
     {
         await _redis.StartAsync();
         var mux = await ConnectionMultiplexer.ConnectAsync(_redis.GetConnectionString());
+        _mux = mux;
         _detector = new SpikeDetector(mux);
     }
 
@@ -85,5 +87,16 @@ public sealed class SpikeDetectorTests : IAsyncLifetime
         var r = await _detector.RecordAsync("svc", "prod", "fp-B", now.AddSeconds(5), Guid.NewGuid());
         r.IsSpike.Should().BeFalse();
         r.Count.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task WindowKey_ExpiresShortlyAfterTheWindow()
+    {
+        await _detector.RecordAsync("svc", "prod", "fp-ttl", DateTimeOffset.UtcNow, Guid.NewGuid());
+
+        var ttl = await _mux.GetDatabase().KeyTimeToLiveAsync("spike:svc:prod:fp-ttl");
+
+        ttl.Should().NotBeNull("an idle window must not stay in Redis forever");
+        ttl!.Value.Should().BeGreaterThan(TimeSpan.FromMinutes(5)).And.BeLessThanOrEqualTo(TimeSpan.FromMinutes(6));
     }
 }

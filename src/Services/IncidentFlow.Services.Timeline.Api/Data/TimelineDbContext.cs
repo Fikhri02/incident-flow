@@ -1,4 +1,5 @@
 using IncidentFlow.Services.Timeline.Api.Models;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace IncidentFlow.Services.Timeline.Api.Data;
@@ -21,5 +22,11 @@ public sealed class TimelineDbContext(DbContextOptions<TimelineDbContext> option
             e.HasIndex(t => t.IncidentId);
             e.HasIndex(t => new { t.CorrelationId, t.OccurredAt });
         });
+
+        // MassTransit inbox: one InboxState row per (MessageId, consumer) marks a message as consumed,
+        // so a redelivery is skipped. The outbox tables come with it; Timeline publishes nothing.
+        model.AddInboxStateEntity();
+        model.AddOutboxMessageEntity();
+        model.AddOutboxStateEntity();
     }
 }

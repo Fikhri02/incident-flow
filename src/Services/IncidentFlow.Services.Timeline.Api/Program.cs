@@ -13,19 +13,13 @@ builder.AddNpgsqlDbContext<TimelineDbContext>("timeline-db");
 
 builder.Services.AddMassTransit(x =>
 {
-    x.UseServiceEndpointNames("timeline");
-    x.AddConsumer<IncidentCreatedConsumer>();
-    x.AddConsumer<IncidentAcknowledgedConsumer>();
-    x.AddConsumer<IncidentResolvedConsumer>();
-    x.AddConsumer<IncidentClosedConsumer>();
-    x.AddConsumer<AnomalyDetectedConsumer>();
-    x.AddConsumer<ErrorSignalConsumer>();
-    x.AddConsumer<CorrelationFoundConsumer>();
+    x.AddTimelineMessaging();
 
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
         cfg.UseDefaultRetry();
+        cfg.UsePayloadCorrelationId();
         cfg.ConfigureEndpoints(ctx);
     });
 });

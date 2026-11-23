@@ -3,6 +3,7 @@ using IncidentFlow.ServiceDefaults;
 using IncidentFlow.Services.Ingestion.Api.Data;
 using IncidentFlow.Services.Ingestion.Api.Endpoints;
 using IncidentFlow.Services.Ingestion.Api.Messaging;
+using IncidentFlow.Services.Ingestion.Api.Middleware;
 using IncidentFlow.Services.Ingestion.Api.RateLimiting;
 using IncidentFlow.BuildingBlocks.Messaging;
 using MassTransit;
@@ -15,11 +16,12 @@ builder.AddNpgsqlDbContext<IngestionDbContext>("ingestion-db");
 
 builder.Services.AddMassTransit(x =>
 {
-    x.UseServiceEndpointNames("ingestion");
+    x.AddIngestionMessaging();
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration.GetConnectionString("rabbitmq"));
         cfg.UseDefaultRetry();
+        cfg.UsePayloadCorrelationId();
         cfg.ConfigureEndpoints(ctx);
     });
 });
@@ -28,6 +30,8 @@ builder.Services.AddScoped<IEventBus, MassTransitEventBus>();
 builder.Services.AddSingleton<SignalRateLimiter>();
 
 var app = builder.Build();
+
+app.UseCorrelationId();
 
 app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
 {

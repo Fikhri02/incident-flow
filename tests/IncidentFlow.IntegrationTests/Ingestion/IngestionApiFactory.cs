@@ -15,6 +15,11 @@ public class IngestionApiFactory : WebApplicationFactory<Program>, IAsyncLifetim
     /// <summary>Signals each source may send per minute; the real default is 1,000.</summary>
     protected virtual int RateLimitPerMinute => 1000;
 
+    /// <summary>False keeps the service's own MassTransit event bus (and its outbox) instead of the null bus.</summary>
+    protected virtual bool ReplaceEventBus => true;
+
+    public string ConnectionString => _postgres.GetConnectionString();
+
     public async Task InitializeAsync() => await _postgres.StartAsync();
 
     public new async Task DisposeAsync()
@@ -35,9 +40,12 @@ public class IngestionApiFactory : WebApplicationFactory<Program>, IAsyncLifetim
         builder.ConfigureServices(services =>
         {
             // Replace IEventBus so tests don't need RabbitMQ
-            var busDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IEventBus));
-            if (busDescriptor is not null) services.Remove(busDescriptor);
-            services.AddScoped<IEventBus, NullEventBus>();
+            if (ReplaceEventBus)
+            {
+                var busDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IEventBus));
+                if (busDescriptor is not null) services.Remove(busDescriptor);
+                services.AddScoped<IEventBus, NullEventBus>();
+            }
 
             // Remove MassTransit hosted services so no RabbitMQ connection is attempted
             services.RemoveMassTransitHostedServices();
