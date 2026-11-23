@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using IncidentFlow.Core;
 using IncidentFlow.ServiceDefaults;
 using Microsoft.AspNetCore.Diagnostics;
 using Yarp.ReverseProxy.Configuration;
@@ -10,14 +9,13 @@ const string ApiKeyHeader = "x-api-key";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-builder.Services.AddSingleton<IncidentFlowEngine>();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
     o.SerializerOptions.WriteIndented = true;
 });
 
-// YARP — proxy signal + incident routes to their respective services
+// YARP — proxy each API to the service that owns it
 // Aspire injects: services__<name>__https__0 / services__<name>__http__0
 var ingestionBase =
     builder.Configuration["services:ingestion:https:0"] ??
@@ -33,6 +31,11 @@ var timelineBase =
     builder.Configuration["services:timeline:https:0"] ??
     builder.Configuration["services:timeline:http:0"] ??
     "http://timeline";
+
+var reportingBase =
+    builder.Configuration["services:reporting:https:0"] ??
+    builder.Configuration["services:reporting:http:0"] ??
+    "http://reporting";
 
 var yarpRoutes = new[]
 {
@@ -53,6 +56,12 @@ var yarpRoutes = new[]
         RouteId = "timeline",
         ClusterId = "timeline",
         Match = new RouteMatch { Path = "/api/v1/timeline/{**remainder}" }
+    },
+    new RouteConfig
+    {
+        RouteId = "reports",
+        ClusterId = "reporting",
+        Match = new RouteMatch { Path = "/api/v1/reports/{**catch-all}" }
     }
 };
 
@@ -80,6 +89,14 @@ var yarpClusters = new[]
         Destinations = new Dictionary<string, DestinationConfig>
         {
             ["timeline/0"] = new DestinationConfig { Address = timelineBase }
+        }
+    },
+    new ClusterConfig
+    {
+        ClusterId = "reporting",
+        Destinations = new Dictionary<string, DestinationConfig>
+        {
+            ["reporting/0"] = new DestinationConfig { Address = reportingBase }
         }
     }
 };
@@ -141,58 +158,13 @@ app.Use(async (ctx, next) =>
 app.MapDefaultEndpoints();
 app.MapReverseProxy();
 
-static string CorrelationId(HttpContext ctx) =>
-    ctx.Items[CorrelationIdHeader] as string ?? Guid.NewGuid().ToString("N");
-
-static ReportFilter ReportFilter(HttpContext ctx) => new(
-    ctx.Request.Query["serviceName"].FirstOrDefault(),
-    ctx.Request.Query["environment"].FirstOrDefault()
-);
-
 // Root
 app.MapGet("/", () => new
 {
     service = "IncidentFlow",
     status = "running",
-    workflow = "signals -> detection -> correlation -> incident -> notification -> timeline -> recommendation -> resolution -> postmortem -> reporting"
+    workflow = "signals -> detection -> incident -> correlation, notification, timeline -> reporting"
 });
-
-// Events
-app.MapGet("/api/v1/events", (IncidentFlowEngine e) => e.GetEvents());
-app.MapGet("/api/v1/events/outbox", (IncidentFlowEngine e) => e.GetOutboxMessages());
-app.MapGet("/api/v1/events/inbox", (IncidentFlowEngine e) => e.GetInboxMessages());
-
-// Notifications
-app.MapPost("/api/v1/notifications/retry-failed", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(e.RetryFailedNotifications(CorrelationId(ctx))));
-
-// Reports
-app.MapGet("/api/v1/reports/summary", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(e.GetReport(ReportFilter(ctx))));
-
-app.MapPost("/api/v1/reports/rebuild", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(e.RebuildReport(ReportFilter(ctx), CorrelationId(ctx))));
-
-app.MapGet("/api/v1/reports/service-reliability", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(e.GetReport(ReportFilter(ctx)).TopFailingServices));
-
-app.MapGet("/api/v1/reports/mtta", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(new { minutes = e.GetReport(ReportFilter(ctx)).MeanTimeToAcknowledgeMinutes }));
-
-app.MapGet("/api/v1/reports/mttr", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(new { minutes = e.GetReport(ReportFilter(ctx)).MeanTimeToResolveMinutes }));
-
-app.MapGet("/api/v1/reports/severity-breakdown", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(e.GetReport(ReportFilter(ctx)).SeverityBreakdown));
-
-app.MapGet("/api/v1/reports/top-failing-services", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(e.GetReport(ReportFilter(ctx)).TopFailingServices));
-
-app.MapGet("/api/v1/reports/deployment-regressions", (HttpContext ctx, IncidentFlowEngine e) =>
-    Results.Ok(e.GetReport(ReportFilter(ctx)).DeploymentRegressionStats));
-
-// Runtime
-app.MapGet("/api/v1/runtime/readiness", (IncidentFlowEngine e) => e.GetRuntimeReadiness());
 
 app.Run();
 

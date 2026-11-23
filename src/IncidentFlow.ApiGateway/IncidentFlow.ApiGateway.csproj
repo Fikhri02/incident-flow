@@ -11,7 +11,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\IncidentFlow.Core\IncidentFlow.Core.csproj" />
     <ProjectReference Include="..\IncidentFlow.ServiceDefaults\IncidentFlow.ServiceDefaults.csproj" />
   </ItemGroup>
 

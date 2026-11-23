@@ -30,13 +30,6 @@ jobs:
       - name: Test
         run: dotnet test IncidentFlow.sln --no-build -c Release --logger "trx;LogFilePrefix=results" --results-directory TestResults
 
-      # Console checks of the prototype engine: they exit non-zero when an assertion fails.
-      - name: Smoke tests
-        run: dotnet run --project tests/IncidentFlow.SmokeTests -c Release --no-build
-
-      - name: Contract tests (prototype)
-        run: dotnet run --project tests/IncidentFlow.ContractTests -c Release --no-build
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
